@@ -146,7 +146,6 @@
 
     window.onload = function() { updateUI(); };
 
-    // Helper for ordinals (1st, 2nd, 3rd)
     function getOrdinal(n) {
         let s = ["th", "st", "nd", "rd"];
         let v = n % 100;
@@ -196,7 +195,6 @@
         const style = document.getElementById('formatStyle').value;
         const originalName = file.name.split('.')[0];
         
-        // Extract all Form Metadata to pass to the generators
         const meta = {
             forum: document.getElementById('forum').value,
             otherForum: document.getElementById('otherForum').value,
@@ -259,13 +257,21 @@
 
         const docChildren = [];
 
-        // 1. Header Information (Centered, 12pt and 22pt)
+        // 1. Header Information
         docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }));
         docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }));
-        docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `HELD AT ${meta.place.toUpperCase()}`, bold: true, size: 24 })] })); // 12pt Centered
+        docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `HELD AT ${meta.place.toUpperCase()}`, bold: true, size: 24 })] }));
+        
+        // Solid Separator Line under HELD AT
+        docChildren.push(new Paragraph({
+            border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } },
+            spacing: { after: 240 },
+            children: [new TextRun({ text: "" })]
+        }));
+
         docChildren.push(new Paragraph({ spacing: { before: 240, after: 240 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true, size: 24 })] }));
 
-        // 2. Parties Table (Left & Right Justified)
+        // 2. Parties Table
         function createPartyRow(leftText, rightText) {
             return new TableRow({
                 children: [
@@ -276,19 +282,39 @@
         }
 
         let partyRows = [];
+        
+        // Helper to add the "AND" with double line spacing above and below
+        function addAndRow() {
+            partyRows.push(new TableRow({
+                children: [
+                    new TableCell({ 
+                        borders: noBorders, 
+                        children: [new Paragraph({ spacing: { before: 480, after: 480 }, children: [new TextRun({ text: "AND", size: 24, bold: true })] })] 
+                    }),
+                    new TableCell({ borders: noBorders, children: [new Paragraph({ children: [] })] })
+                ]
+            }));
+        }
+
         if (meta.isDisciplinary) {
             if(meta.empName) partyRows.push(createPartyRow(meta.empName, "EMPLOYER"));
+            if(meta.empName && meta.employeeName) addAndRow();
             if(meta.employeeName) partyRows.push(createPartyRow(meta.employeeName, "EMPLOYEE"));
         } else {
-            meta.apps.forEach((app, i) => { if(app) partyRows.push(createPartyRow(app, `${getOrdinal(i+1)} APPLICANT`)); });
-            meta.ress.forEach((res, i) => { if(res) partyRows.push(createPartyRow(res, `${getOrdinal(i+1)} RESPONDENT`)); });
+            let hasApps = false;
+            meta.apps.forEach((app, i) => { if(app) { partyRows.push(createPartyRow(app, `${getOrdinal(i+1)} APPLICANT`)); hasApps = true; } });
+            
+            let hasRes = meta.ress.some(r => r);
+            if (hasApps && hasRes) addAndRow();
+
+            meta.ress.forEach((res, i) => { if(res) { partyRows.push(createPartyRow(res, `${getOrdinal(i+1)} RESPONDENT`)); } });
         }
 
         if(partyRows.length > 0) {
             docChildren.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: noBorders, rows: partyRows }));
         }
 
-        // 3. Representatives & Officials (Left Justified, below parties)
+        // 3. Representatives & Officials
         docChildren.push(new Paragraph({ spacing: { before: 240 }, children: [] }));
         if (meta.isDisciplinary) {
             if (meta.initiatorName) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Initiator: ${meta.initiatorName}`, size: 24 })] }));
@@ -301,7 +327,7 @@
         }
         if (meta.hearingDate) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Date of Hearing: ${meta.hearingDate}`, size: 24 })] }));
 
-        // 4. Solid Separator Line
+        // 4. Solid Separator Line before transcript
         docChildren.push(new Paragraph({
             border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } },
             spacing: { after: 400 },
@@ -384,22 +410,41 @@
         pdf.text(forumName.toUpperCase(), 105, y, { align: 'center' }); y += 10;
         
         pdf.setFontSize(12);
-        pdf.text(`HELD AT ${meta.place.toUpperCase()}`, 105, y, { align: 'center' }); y += 15; // 12pt Centered
+        pdf.text(`HELD AT ${meta.place.toUpperCase()}`, 105, y, { align: 'center' }); y += 5;
+        
+        // Solid Separator Line under HELD AT
+        pdf.line(20, y, 190, y); y += 10;
         
         pdf.text("IN THE MATTER BETWEEN:", 20, y); y += 10;
 
-        // 2. Parties (Left & Right Justified)
+        // 2. Parties
         if (meta.isDisciplinary) {
             if(meta.empName) { pdf.text(meta.empName, 20, y); pdf.text("EMPLOYER", 190, y, { align: 'right' }); y += 7; }
+            
+            if(meta.empName && meta.employeeName) {
+                y += 7; // Adds ~2 lines
+                pdf.text("AND", 20, y);
+                y += 14; // Adds ~2 lines
+            }
+            
             if(meta.employeeName) { pdf.text(meta.employeeName, 20, y); pdf.text("EMPLOYEE", 190, y, { align: 'right' }); y += 7; }
         } else {
-            meta.apps.forEach((app, i) => { if(app) { pdf.text(app, 20, y); pdf.text(`${getOrdinal(i+1)} APPLICANT`, 190, y, { align: 'right' }); y += 7; } });
+            let hasApps = false;
+            meta.apps.forEach((app, i) => { if(app) { pdf.text(app, 20, y); pdf.text(`${getOrdinal(i+1)} APPLICANT`, 190, y, { align: 'right' }); y += 7; hasApps = true; } });
+            
+            let hasRes = meta.ress.some(r => r);
+            if (hasApps && hasRes) {
+                y += 7;
+                pdf.text("AND", 20, y);
+                y += 14;
+            }
+
             meta.ress.forEach((res, i) => { if(res) { pdf.text(res, 20, y); pdf.text(`${getOrdinal(i+1)} RESPONDENT`, 190, y, { align: 'right' }); y += 7; } });
         }
 
         y += 5;
 
-        // 3. Representatives & Officials (Left Justified)
+        // 3. Representatives & Officials
         pdf.setFont("helvetica", "normal");
         if (meta.isDisciplinary) {
             if (meta.initiatorName) { pdf.text(`Initiator: ${meta.initiatorName}`, 20, y); y += 7; }
@@ -414,9 +459,9 @@
 
         y += 5;
 
-        // 4. Solid Separator Line
+        // 4. Solid Separator Line before transcript
         pdf.line(20, y, 190, y); 
-        y += 15; // Gap before transcript starts
+        y += 15; 
 
         // 5. UNTOUCHED: Transcript Generation
         pdf.setFont("courier", "normal");
