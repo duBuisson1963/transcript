@@ -1,283 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Legal Transcript Formatter</title>
-    
-    <script src="https://unpkg.com/docx@7.1.1/build/index.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-    <style>
-        body { font-family: Arial, sans-serif; background: #f4f7f6; padding: 20px; color: #333; line-height: 1.5; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 8px; border: 1px solid #ccc; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-top: 0; }
-        .section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; background: #fafafa; border-radius: 5px; }
-        label { display: block; font-weight: bold; margin-top: 10px; font-size: 14px; color: #444; }
-        input, select { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #aaa; border-radius: 4px; font-size: 14px; }
-        .hidden { display: none; }
-        .flex-row { display: flex; gap: 20px; }
-        .flex-col { flex: 1; }
-        .dynamic-box { padding: 10px; background: #eee; margin-top: 10px; border-radius: 4px; border: 1px dashed #ccc; }
-        button { background: #2c3e50; color: white; padding: 15px 30px; border: none; font-size: 16px; cursor: pointer; width: 100%; margin-top: 20px; border-radius: 5px; font-weight: bold; transition: 0.3s; }
-        button:hover { background: #1a252f; }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h1>Legal Transcript Formatter</h1>
-
-    <div class="section">
-        <label>Select Forum</label>
-        <select id="forum" onchange="updateUI()">
-            <option value="">-- Select Forum --</option>
-            <option value="DISCIPLINARY HEARING">Disciplinary Hearing</option>
-            <option value="COMMISSION FOR CONCILIATION, MEDIATION & ARBITRATION">CCMA</option>
-            <option value="LABOUR COURT OF SOUTH AFRICA">Labour Court</option>
-            <option value="OTHER">Other</option>
-        </select>
-        <input type="text" id="otherForum" class="hidden" placeholder="Type custom forum name...">
-    </div>
-
-    <div class="section flex-row">
-        <div class="flex-col">
-            <label>Place</label>
-            <input type="text" id="place" placeholder="e.g. Johannesburg" oninput="updateCasePrefix()">
-        </div>
-        <div class="flex-col" id="caseBox">
-            <label>Case Number</label>
-            <input type="text" id="caseNumber" placeholder="Prefix added automatically...">
-        </div>
-    </div>
-
-    <div class="section" id="partiesSection">
-        <div id="disciplinaryParties" class="hidden">
-            <label>Name of Employer</label><input type="text" id="empName">
-            <label>Name of Employee</label><input type="text" id="employeeName">
-            <label>Name of Initiator</label><input type="text" id="initiatorName">
-            <label>Employee Representative</label><input type="text" id="empRepName">
-        </div>
-
-        <div id="legalParties" class="hidden">
-            <div class="flex-row">
-                <div class="flex-col">
-                    <label>How many Applicants?</label>
-                    <input type="number" id="appCount" value="1" min="1" oninput="generateInputs('Applicant', 'appCount', 'appDiv')">
-                </div>
-                <div class="flex-col">
-                    <label>How many Respondents?</label>
-                    <input type="number" id="resCount" value="1" min="1" oninput="generateInputs('Respondent', 'resCount', 'resDiv')">
-                </div>
-            </div>
-            <div id="appDiv" class="dynamic-box"></div>
-            <div id="resDiv" class="dynamic-box"></div>
-            
-            <label>Legal Entity acting for Applicants?</label>
-            <select id="legalEntity" onchange="document.getElementById('otherEntity').className = this.value === 'OTHER' ? '' : 'hidden'">
-                <option value="NONE">None</option>
-                <option value="BEMAWU">BEMAWU</option>
-                <option value="OTHER">Other</option>
-            </select>
-            <input type="text" id="otherEntity" class="hidden" placeholder="Specify Entity...">
-            
-            <label>Appearance on behalf of Applicant</label><input type="text" id="appRep">
-            <label>Appearance on behalf of Respondent</label><input type="text" id="resRep">
-        </div>
-    </div>
-
-    <div class="section">
-        <label id="officialLabel">Chairperson / Commissioner</label>
-        <input type="text" id="officialName">
-
-        <label>Date of Hearing</label>
-        <input type="date" id="hearingDate">
-
-        <label>How many Witnesses?</label>
-        <input type="number" id="witCount" value="1" min="0" oninput="generateInputs('Witness', 'witCount', 'witDiv')">
-        <div id="witDiv" class="dynamic-box"></div>
-    </div>
-
-    <div class="section">
-        <label>Upload Transcript (.txt or .docx)</label>
-        <input type="file" id="uploadFile" accept=".txt,.docx">
-
-        <label>Formatting Style</label>
-        <select id="formatStyle">
-            <option value="tabbed">Tab Formatted (Aligned past longest name)</option>
-            <option value="justified">Justified (Tab after colon)</option>
-        </select>
-    </div>
-
-    <button type="button" onclick="executeExport()">Export Word Doc & PDF</button>
-</div>
-
-<script>
-    let prefixData = JSON.parse(localStorage.getItem('casePrefixes')) || { "johannesburg": "GAJB" };
-
-    function updateUI() {
-        const forum = document.getElementById('forum').value;
-        document.getElementById('otherForum').className = forum === 'OTHER' ? '' : 'hidden';
-        document.getElementById('disciplinaryParties').className = forum === 'DISCIPLINARY HEARING' ? '' : 'hidden';
-        document.getElementById('legalParties').className = (forum !== 'DISCIPLINARY HEARING' && forum !== '') ? '' : 'hidden';
-        document.getElementById('caseBox').className = forum === 'DISCIPLINARY HEARING' ? 'flex-col hidden' : 'flex-col';
-        document.getElementById('officialLabel').innerText = forum === 'DISCIPLINARY HEARING' ? 'Name of Chairperson' : 'Name of Commissioner';
-        
-        generateInputs('Applicant', 'appCount', 'appDiv');
-        generateInputs('Respondent', 'resCount', 'resDiv');
-        generateInputs('Witness', 'witCount', 'witDiv');
-    }
-
-    function generateInputs(label, countId, divId) {
-        const count = document.getElementById(countId) ? parseInt(document.getElementById(countId).value) : 0;
-        const div = document.getElementById(divId);
-        if(!div) return;
-        div.innerHTML = `<strong>${label}s:</strong>`;
-        for(let i=1; i<=count; i++) {
-            div.innerHTML += `<input type="text" placeholder="${label} ${i} Name">`;
-        }
-    }
-
-    function updateCasePrefix() {
-        const place = document.getElementById('place').value.toLowerCase().trim();
-        if (prefixData[place]) document.getElementById('caseNumber').value = prefixData[place] + "/";
-    }
-
-    window.onload = function() { updateUI(); };
-
-    function formatTurboscribe(rawText) {
-        let blocks = [];
-        let linesArr = rawText.split('\n');
-        let currentSpeaker = "";
-        let currentDialogue = [];
-
-        for (let i = 0; i < linesArr.length; i++) {
-            let line = linesArr[i].trim();
-            if (!line) continue;
-
-            let standaloneMatch = line.match(/^\[(.*?)\]:?$/);
-            let inlineMatch = line.match(/^\[?(.*?)\]?:\s*(.*)/);
-
-            if (standaloneMatch) {
-                if (currentSpeaker || currentDialogue.length > 0) {
-                    blocks.push({ speaker: currentSpeaker, text: currentDialogue.join(' ') });
-                }
-                currentSpeaker = standaloneMatch[1].trim(); 
-                currentDialogue = [];
-            } else if (inlineMatch && inlineMatch[1].length < 40) {
-                if (currentSpeaker || currentDialogue.length > 0) {
-                    blocks.push({ speaker: currentSpeaker, text: currentDialogue.join(' ') });
-                }
-                currentSpeaker = inlineMatch[1].replace(/[\[\]]/g, '').trim();
-                currentDialogue = [inlineMatch[2].trim()];
-            } else {
-                currentDialogue.push(line);
-            }
-        }
-        if (currentSpeaker || currentDialogue.length > 0) {
-            blocks.push({ speaker: currentSpeaker, text: currentDialogue.join(' ') });
-        }
-        return blocks;
-    }
-
-    async function executeExport() {
-        const fileInput = document.getElementById('uploadFile');
-        if (!fileInput.files.length) return alert("Please upload a file first.");
-
-        const file = fileInput.files[0];
-        const style = document.getElementById('formatStyle').value;
-        const originalName = file.name.split('.')[0];
-        
-        try {
-            let text = "";
-            if (file.name.endsWith('.docx')) {
-                const buffer = await file.arrayBuffer();
-                const res = await mammoth.extractRawText({arrayBuffer: buffer});
-                text = res.value;
-            } else {
-                text = await file.text();
-            }
-
-            const dialogueBlocks = formatTurboscribe(text);
-
-            let longest = 0;
-            dialogueBlocks.forEach(b => {
-                if (b.speaker && b.speaker.length > longest) longest = b.speaker.length;
-            });
-
-            await exportDocx(dialogueBlocks, longest, originalName, style);
-            exportPdf(dialogueBlocks, longest, originalName, style);
-
-        } catch (err) {
-            console.error(err);
-            alert("System Error: " + err.message);
-        }
-    }
-
-    async function exportDocx(blocks, longest, fileName, style) {
-        const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber } = docx;
-        let forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
-        const place = document.getElementById('place').value.toUpperCase();
-        const padSize = longest + 4; 
-
-        const children = [
-            new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }),
-            new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }),
-            new Paragraph({ alignment: AlignmentType.LEFT, border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: `HELD AT ${place}`, bold: true })] }),
-            new Paragraph({ spacing: { before: 240, after: 400 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] })
-        ];
-
-        blocks.forEach((block, i) => {
-            let runs = [];
-            // Use NON-BREAKING spaces for the line numbers so Word respects them
-            let lineNumString = (i % 5 === 0) ? (i + 1).toString().padEnd(4, "\u00A0") : "\u00A0\u00A0\u00A0\u00A0";
-            runs.push(new TextRun({ text: lineNumString, font: "Courier New", size: 24 }));
-
-            if (block.speaker) {
-                let name = block.speaker.toUpperCase();
-                
-                if (style === 'tabbed') {
-                    let padLength = padSize - name.length;
-                    
-                    // FIX: Using \u00A0 (Non-Breaking Space) forces Word to keep the spaces for alignment
-                    let paddingSpaces = "\u00A0".repeat(padLength > 0 ? padLength : 0);
-                    
-                    // FIX: type: "single" is the universal property that will not crash docx 7.1.1
-                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: "single" } }));
-                    runs.push(new TextRun({ text: paddingSpaces + ": " + block.text, font: "Courier New", size: 24 }));
-                } else {
-                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: "single" } }));
-                    runs.push(new TextRun({ text: ": \t" + block.text, font: "Courier New", size: 24 }));
-                }
-            } else {
-                runs.push(new TextRun({ text: String(block.text), font: "Courier New", size: 24 }));
-            }
-
-            children.push(new Paragraph({
-                spacing: { line: 480 },
-                children: runs
-            }));
-        });
-
-        children.push(new Paragraph({ spacing: { before: 500 }, border: { top: { style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "TRANSCRIBER'S CERTIFICATE", bold: true })] }));
-        children.push(new Paragraph({ children: [new TextRun("I hereby certify that the above is a true and correct record of the proceedings.") ] }));
-        children.push(new Paragraph({ spacing: { before: 400 }, children: [new TextRun(`SIGNED AT ${place} ON THIS ____ DAY OF ___________ 2026`) ] }));
-
-        const doc = new Document({
-            sections: [{
-                properties: { page: { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } },
-                footers: { default: new docx.Footer({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun("Page "), new TextRun({ children: [PageNumber.CURRENT] })] })] }) },
-                children: children
-            }]
-        });
-
-        Packer.toBlob(doc).then(blob => {
-            saveAs(blob, `${fileName}_${style}.docx`);
-        });
-    }
-
-    function exportPdf(blocks, longest, fileName, style) {
+function exportPdf(blocks, longest, fileName, style) {
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ format: 'a4', unit: 'mm' });
         
@@ -298,6 +19,7 @@
             }
         };
 
+        // Header
         pdf.setFont("helvetica", "normal"); pdf.setFontSize(12);
         pdf.text("IN THE", 105, y, { align: 'center' }); y += 8;
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(22);
@@ -307,36 +29,58 @@
         pdf.line(20, y, 190, y); y += 10;
         pdf.text("IN THE MATTER BETWEEN:", 20, y); y += 15;
 
+        // Content
         pdf.setFont("courier", "normal");
         pdf.setFontSize(10);
-        const padSize = longest + 4;
+        
+        // Calculate exact X coordinates for perfect tab alignment
+        const startX = 25;
+        const charWidth = pdf.getTextWidth("X"); 
+        const tabX = startX + (longest * charWidth) + (4 * charWidth); // Tab stop past longest name
 
         blocks.forEach(block => {
             let name = block.speaker ? block.speaker.toUpperCase() : "";
-            let padLength = padSize - name.length;
-            let padding = " ".repeat(padLength > 0 ? padLength : 0);
             
-            let output = "";
             if (name) {
-                output = style === 'tabbed' ? name + padding + ": " + block.text : name + ":    " + block.text;
-            } else {
-                output = block.text;
-            }
-
-            const splitText = pdf.splitTextToSize(output, 160);
-            splitText.forEach((textPart, idx) => {
                 checkPage();
                 physicalLineCount++;
+                if (physicalLineCount % 5 === 0) pdf.text(physicalLineCount.toString(), 10, y); 
                 
-                if (physicalLineCount % 5 === 0) {
-                    pdf.text(physicalLineCount.toString(), 10, y); 
-                }
+                // 1. Print the Name
+                pdf.text(name, startX, y);
                 
-                pdf.text(textPart, 25, y);
-                y += 7; 
-            });
+                // 2. Physically draw the underline exactly under the name
+                let nameWidth = pdf.getTextWidth(name);
+                pdf.line(startX, y + 1, startX + nameWidth, y + 1); 
+                
+                // 3. Print the dialogue at the perfect Tab Stop
+                let dialogueX = style === 'tabbed' ? tabX : startX + nameWidth + charWidth;
+                let splitDialogue = pdf.splitTextToSize(": " + block.text, 190 - dialogueX);
+                
+                splitDialogue.forEach((textPart, idx) => {
+                    if (idx > 0) {
+                        y += 7; // Double spacing for wrapped text
+                        checkPage();
+                        physicalLineCount++;
+                        if (physicalLineCount % 5 === 0) pdf.text(physicalLineCount.toString(), 10, y); 
+                    }
+                    pdf.text(textPart, dialogueX, y);
+                });
+                y += 7; // Double spacing for next speaker
+            } else {
+                // No speaker, just raw text
+                let splitText = pdf.splitTextToSize(block.text, 160);
+                splitText.forEach((textPart, idx) => {
+                    checkPage();
+                    physicalLineCount++;
+                    if (physicalLineCount % 5 === 0) pdf.text(physicalLineCount.toString(), 10, y); 
+                    pdf.text(textPart, startX, y);
+                    y += 7; 
+                });
+            }
         });
 
+        // Certificate Footer
         checkPage();
         y += 10;
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(12);
@@ -348,7 +92,3 @@
         
         pdf.save(`${fileName}_${style}.pdf`);
     }
-</script>
-
-</body>
-</html>
