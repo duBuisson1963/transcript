@@ -4,22 +4,23 @@
     <meta charset="UTF-8">
     <title>Legal Transcript Formatter</title>
     
-  <script src="https://unpkg.com/docx@7.8.2/build/index.umd.js"></script>
+    <script src="https://unpkg.com/docx@7.8.2/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 8px; border: 1px solid #ccc; }
-        h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }
+        body { font-family: Arial, sans-serif; background: #f4f7f6; padding: 20px; color: #333; line-height: 1.5; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 8px; border: 1px solid #ccc; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-top: 0; }
         .section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; background: #fafafa; border-radius: 5px; }
-        label { display: block; font-weight: bold; margin-top: 10px; }
-        input, select { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #aaa; border-radius: 4px; }
+        label { display: block; font-weight: bold; margin-top: 10px; font-size: 14px; color: #444; }
+        input, select { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #aaa; border-radius: 4px; font-size: 14px; }
         .hidden { display: none; }
         .flex-row { display: flex; gap: 20px; }
         .flex-col { flex: 1; }
-        .dynamic-box { padding: 10px; background: #eee; margin-top: 10px; border-radius: 4px; }
-        button { background: #2c3e50; color: white; padding: 15px 30px; border: none; font-size: 16px; cursor: pointer; width: 100%; margin-top: 20px; border-radius: 5px; font-weight: bold; }
+        .dynamic-box { padding: 10px; background: #eee; margin-top: 10px; border-radius: 4px; border: 1px dashed #ccc; }
+        button { background: #2c3e50; color: white; padding: 15px 30px; border: none; font-size: 16px; cursor: pointer; width: 100%; margin-top: 20px; border-radius: 5px; font-weight: bold; transition: 0.3s; }
         button:hover { background: #1a252f; }
     </style>
 </head>
@@ -110,11 +111,9 @@
     </div>
 
     <button type="button" onclick="executeExport()">Export Word Doc & PDF</button>
-
 </div>
 
 <script>
-    // 1. Storage & UI Logic
     let prefixData = JSON.parse(localStorage.getItem('casePrefixes')) || { "johannesburg": "GAJB" };
 
     function updateUI() {
@@ -131,12 +130,12 @@
     }
 
     function generateInputs(label, countId, divId) {
-        const count = document.getElementById(countId) ? document.getElementById(countId).value : 0;
+        const count = document.getElementById(countId) ? parseInt(document.getElementById(countId).value) : 0;
         const div = document.getElementById(divId);
         if(!div) return;
         div.innerHTML = `<strong>${label}s:</strong>`;
         for(let i=1; i<=count; i++) {
-            div.innerHTML += `<input type="text" placeholder="${label} ${i}">`;
+            div.innerHTML += `<input type="text" placeholder="${label} ${i} Name">`;
         }
     }
 
@@ -145,7 +144,46 @@
         if (prefixData[place]) document.getElementById('caseNumber').value = prefixData[place] + "/";
     }
 
-    // 2. Main Execution Logic
+    window.onload = function() { updateUI(); };
+
+    // --- NEW TURBOSCRIBE PARSER ---
+    function parseTranscript(rawText) {
+        let blocks = [];
+        let linesArr = rawText.split('\n');
+        let currentSpeaker = "";
+        let currentDialogue = [];
+
+        for (let i = 0; i < linesArr.length; i++) {
+            let line = linesArr[i].trim();
+            if (!line) continue;
+
+            // Matches standalone tags like "[Ms Ntuli]" or "[Ms Ntuli]:"
+            let standaloneMatch = line.match(/^\[(.*?)\]:?$/);
+            // Matches inline tags like "[Ms Ntuli]: Hello"
+            let inlineMatch = line.match(/^\[?(.*?)\]?:\s*(.*)/);
+
+            if (standaloneMatch) {
+                if (currentSpeaker || currentDialogue.length > 0) {
+                    blocks.push({ speaker: currentSpeaker, text: currentDialogue.join(' ') });
+                }
+                currentSpeaker = standaloneMatch[1].trim(); // Removes brackets automatically
+                currentDialogue = [];
+            } else if (inlineMatch && inlineMatch[1].length < 40) {
+                if (currentSpeaker || currentDialogue.length > 0) {
+                    blocks.push({ speaker: currentSpeaker, text: currentDialogue.join(' ') });
+                }
+                currentSpeaker = inlineMatch[1].replace(/[\[\]]/g, '').trim();
+                currentDialogue = [inlineMatch[2].trim()];
+            } else {
+                currentDialogue.push(line);
+            }
+        }
+        if (currentSpeaker || currentDialogue.length > 0) {
+            blocks.push({ speaker: currentSpeaker, text: currentDialogue.join(' ') });
+        }
+        return blocks;
+    }
+
     async function executeExport() {
         const fileInput = document.getElementById('uploadFile');
         if (!fileInput.files.length) return alert("Please upload a file first.");
@@ -153,15 +191,7 @@
         const file = fileInput.files[0];
         const style = document.getElementById('formatStyle').value;
         const originalName = file.name.split('.')[0];
-        const place = document.getElementById('place').value.trim();
-        const caseNum = document.getElementById('caseNumber').value.trim();
         
-        // Save prefix
-        if(place && caseNum.includes('/')) {
-            prefixData[place.toLowerCase()] = caseNum.split('/')[0];
-            localStorage.setItem('casePrefixes', JSON.stringify(prefixData));
-        }
-
         try {
             let text = "";
             if (file.name.endsWith('.docx')) {
@@ -172,52 +202,70 @@
                 text = await file.text();
             }
 
-            // Find longest name
-            const lines = text.split('\n').filter(l => l.trim() !== "");
+            // 1. Run the new parser
+            const dialogueBlocks = parseTranscript(text);
+
+            // 2. Find longest speaker name (without brackets)
             let longest = 0;
-            lines.forEach(l => {
-                const match = l.match(/^\[?(.*?)\]?:/);
-                if (match && match[1].length > longest) longest = match[1].length;
+            dialogueBlocks.forEach(b => {
+                if (b.speaker && b.speaker.length > longest) longest = b.speaker.length;
             });
 
-            // Trigger both exports
-            await exportDocx(lines, longest, originalName, style);
-            exportPdf(lines, longest, originalName, style);
+            // 3. Export files
+            await exportDocx(dialogueBlocks, longest, originalName, style);
+            exportPdf(dialogueBlocks, longest, originalName, style);
             
-            alert("Success! Both Word and PDF files have been downloaded.");
+            alert("Success! Check your downloads for the processed files.");
 
         } catch (err) {
+            console.error(err);
             alert("Error processing file: " + err.message);
         }
     }
 
-    // 3. Word Document Generator
-    async function exportDocx(lines, longest, fileName, style) {
+    async function exportDocx(blocks, longest, fileName, style) {
         const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber } = docx;
         let forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
         const place = document.getElementById('place').value.toUpperCase();
-        const padSize = longest + 4;
+        const padSize = longest + 4; // Buffer past the longest name
 
         const children = [
             new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }),
             new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }),
             new Paragraph({ alignment: AlignmentType.LEFT, border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: `HELD AT ${place}`, bold: true })] }),
-            new Paragraph({ spacing: { before: 240 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] })
+            new Paragraph({ spacing: { before: 240, after: 400 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] })
         ];
 
-        lines.forEach((line, i) => {
-            const match = line.match(/^(\[?.*?\]?):(.*)/);
-            let formatted = line;
-            if(match) {
-                const name = match[1].toUpperCase();
-                const dialogue = match[2].trim();
-                formatted = style === 'tabbed' ? name.padEnd(padSize) + ": " + dialogue : name + ": \t" + dialogue;
+        // Format Transcript Blocks
+        blocks.forEach((block, i) => {
+            let runs = [];
+            
+            // Add manual numbering for every 5th paragraph block
+            let lineNumString = (i % 5 === 0) ? (i + 1).toString().padEnd(4) : "    ";
+            runs.push(new TextRun({ text: lineNumString, font: "Courier New", size: 24 }));
+
+            if (block.speaker) {
+                let name = block.speaker.toUpperCase();
+                
+                if (style === 'tabbed') {
+                    let padLength = padSize - name.length;
+                    let paddingSpaces = " ".repeat(padLength > 0 ? padLength : 0);
+                    
+                    // ONLY underline the name, not the spaces
+                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: {} }));
+                    runs.push(new TextRun({ text: paddingSpaces + ": " + block.text, font: "Courier New", size: 24 }));
+                } else {
+                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: {} }));
+                    runs.push(new TextRun({ text: ": \t" + block.text, font: "Courier New", size: 24 }));
+                }
+            } else {
+                // If it's just raw text without a speaker
+                runs.push(new TextRun({ text: block.text, font: "Courier New", size: 24 }));
             }
 
-            let lineNum = (i % 5 === 0) ? (i + 1).toString().padEnd(4) : "    ";
             children.push(new Paragraph({
-                spacing: { line: 480 },
-                children: [new TextRun({ text: lineNum + formatted, font: "Courier New", size: 24 })]
+                spacing: { line: 480 }, // Double Spacing
+                children: runs
             }));
         });
 
@@ -237,14 +285,13 @@
         saveAs(blob, `${fileName}_${style}.docx`);
     }
 
-    // 4. PDF Generator
-    function exportPdf(lines, longest, fileName, style) {
+    function exportPdf(blocks, longest, fileName, style) {
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ format: 'a4', unit: 'mm' });
         
         let y = 20;
         let pageNum = 1;
-        let lineCount = 0;
+        let physicalLineCount = 0; 
         const pageHeight = pdf.internal.pageSize.getHeight();
         let forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
         const place = document.getElementById('place').value.toUpperCase();
@@ -255,11 +302,10 @@
                 pdf.addPage();
                 y = 20;
                 pageNum++;
-                lineCount = 0; // Restart line count per page
+                physicalLineCount = 0; // Restart counting per page
             }
         };
 
-        // Header
         pdf.setFont("helvetica", "normal"); pdf.setFontSize(12);
         pdf.text("IN THE", 105, y, { align: 'center' }); y += 8;
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(22);
@@ -269,35 +315,37 @@
         pdf.line(20, y, 190, y); y += 10;
         pdf.text("IN THE MATTER BETWEEN:", 20, y); y += 15;
 
-        // Transcript Text
         pdf.setFont("courier", "normal");
         pdf.setFontSize(10);
-        const padSize = longest + 2;
+        const padSize = longest + 4;
 
-        lines.forEach(line => {
-            let output = line;
-            const match = line.match(/^(\[?.*?\]?):(.*)/);
-            if(match) {
-                const name = match[1].toUpperCase();
-                const dialogue = match[2].trim();
-                output = style === 'tabbed' ? name.padEnd(padSize) + ": " + dialogue : name + ":    " + dialogue;
+        blocks.forEach(block => {
+            let name = block.speaker ? block.speaker.toUpperCase() : "";
+            let padLength = padSize - name.length;
+            let padding = " ".repeat(padLength > 0 ? padLength : 0);
+            
+            let output = "";
+            if (name) {
+                output = style === 'tabbed' ? name + padding + ": " + block.text : name + ":    " + block.text;
+            } else {
+                output = block.text;
             }
 
             const splitText = pdf.splitTextToSize(output, 160);
             splitText.forEach((textPart, idx) => {
                 checkPage();
-                if (idx === 0) {
-                    lineCount++;
-                    if (lineCount % 5 === 0) {
-                        pdf.text(lineCount.toString(), 10, y); // Line number
-                    }
+                physicalLineCount++;
+                
+                // Number every 5th line physically
+                if (physicalLineCount % 5 === 0) {
+                    pdf.text(physicalLineCount.toString(), 10, y); 
                 }
+                
                 pdf.text(textPart, 25, y);
                 y += 7; // Double spacing
             });
         });
 
-        // Certificate
         checkPage();
         y += 10;
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(12);
@@ -305,8 +353,8 @@
         pdf.setFont("helvetica", "normal");
         pdf.text("I hereby certify that the above is a true and correct record of the proceedings.", 20, y); y += 10;
         pdf.text(`SIGNED AT ${place} ON THIS ____ DAY OF ___________ 2026`, 20, y);
-
         pdf.text(`Page ${pageNum}`, 190, 287, { align: 'right' });
+        
         pdf.save(`${fileName}_${style}.pdf`);
     }
 </script>
