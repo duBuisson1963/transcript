@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Legal Transcript Formatter Pro</title>
-    <script src="https://unpkg.com/docx@8.2.2/build/index.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/7.8.2/docx.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
 
     <style>
@@ -82,7 +81,7 @@
     </div>
 
     <div class="section">
-        <label id="labelOfficial">Chairperson</label>
+        <label id="labelOfficial">Chairperson / Commissioner</label>
         <input type="text" id="nameOfficial">
         
         <label>Initiator / Applicant Representative</label>
@@ -111,7 +110,7 @@
     </div>
 
     <div class="btn-group">
-        <button class="save-btn" onclick="generateOutput()">Generate & Save Documents</button>
+        <button type="button" class="save-btn" onclick="processAndSave()">Generate & Save Document</button>
     </div>
 </div>
 
@@ -125,15 +124,23 @@
         const legal = document.getElementById('legalFields');
         const caseCont = document.getElementById('caseNumContainer');
         const labelOff = document.getElementById('labelOfficial');
+        const otherForum = document.getElementById('otherForum');
 
         disc.classList.add('hidden');
         legal.classList.add('hidden');
         caseCont.classList.remove('hidden');
+        otherForum.classList.add('hidden');
 
         if(forum === "DISCIPLINARY HEARING") {
             disc.classList.remove('hidden');
             caseCont.classList.add('hidden');
             labelOff.innerText = "Name of Chairperson";
+        } else if (forum === "OTHER") {
+            otherForum.classList.remove('hidden');
+            legal.classList.remove('hidden');
+            labelOff.innerText = "Name of Commissioner";
+            renderInputs('App');
+            renderInputs('Res');
         } else if (forum !== "") {
             legal.classList.remove('hidden');
             labelOff.innerText = "Name of Commissioner";
@@ -144,8 +151,10 @@
     }
 
     function renderInputs(type) {
-        const count = document.getElementById('count' + type).value;
+        const count = document.getElementById('count' + type) ? document.getElementById('count' + type).value : 0;
         const container = document.getElementById(type.toLowerCase() + 'List');
+        if(!container) return;
+        
         container.innerHTML = `<strong>${type} Names:</strong>`;
         for(let i=1; i<=count; i++) {
             container.innerHTML += `<div class="dynamic-item"><input type="text" class="${type}-input" placeholder="${type} ${i} Name"></div>`;
@@ -162,43 +171,108 @@
         document.getElementById('otherLegal').className = (val === 'Other') ? '' : 'hidden';
     }
 
-    async function generateOutput() {
-        const file = document.getElementById('fileIn').files[0];
-        if (!file) return alert("Please upload a file first.");
+    async function processAndSave() {
+        try {
+            const fileInput = document.getElementById('fileIn');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert("Please upload a file first.");
+                return;
+            }
 
-        // Prefix persistence logic
-        const place = document.getElementById('place').value.toLowerCase().trim();
-        const caseVal = document.getElementById('caseNumber').value;
-        if(place && caseVal.includes('/')) {
-            prefixes[place] = caseVal.split('/')[0];
-            localStorage.setItem(storageKey, JSON.stringify(prefixes));
+            const file = fileInput.files[0];
+            
+            // Save prefix logic
+            const place = document.getElementById('place').value.toLowerCase().trim();
+            const caseVal = document.getElementById('caseNumber').value;
+            if(place && caseVal.includes('/')) {
+                prefixes[place] = caseVal.split('/')[0];
+                localStorage.setItem(storageKey, JSON.stringify(prefixes));
+            }
+
+            // Read the file text
+            let rawText = "";
+            if (file.name.endsWith('.docx')) {
+                const buffer = await file.arrayBuffer();
+                const res = await mammoth.extractRawText({arrayBuffer: buffer});
+                rawText = res.value;
+            } else {
+                rawText = await file.text();
+            }
+
+            if (!rawText) {
+                throw new Error("The file is empty or could not be read.");
+            }
+
+            // Calculate longest name for formatting
+            const lines = rawText.split('\n').filter(l => l.trim() !== "");
+            let longestNameLength = 0;
+            lines.forEach(l => {
+                const m = l.match(/^\[?(.*?)\]?:/);
+                if (m && m[1].length > longestNameLength) {
+                    longestNameLength = m[1].length;
+                }
+            });
+
+            // Pass to document generator
+            await createWordDocument(lines, longestNameLength, file.name);
+
+        } catch (error) {
+            alert("SYSTEM ERROR: " + error.message + "\n\nPlease open the Developer Console (F12) to see more details.");
+            console.error("Full Error Details:", error);
         }
-
-        let rawText = "";
-        if (file.name.endsWith('.docx')) {
-            const buffer = await file.arrayBuffer();
-            const res = await mammoth.extractRawText({arrayBuffer: buffer});
-            rawText = res.value;
-        } else {
-            rawText = await file.text();
-        }
-
-        const lines = rawText.split('\n').filter(l => l.trim() !== "");
-        let longestName = 0;
-        lines.forEach(l => {
-            const m = l.match(/^\[?(.*?)\]?:/);
-            if (m && m[1].length > longestName) longestName = m[1].length;
-        });
-
-        saveWordFile(lines, longestName, file.name);
     }
 
-    function saveWordFile(lines, longest, originalName) {
+    async function createWordDocument(lines, longest, originalName) {
+        // Destructure docx to ensure variables exist
         const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber } = docx;
-        const forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
+        
+        let forumName = document.getElementById('forum').value;
+        if (forumName === 'OTHER') forumName = document.getElementById('otherForum').value;
         const style = document.getElementById('formatType').value;
-        const pad = longest + 4;
+        const padSize = longest + 4;
 
+        // Build the paragraphs array dynamically
+        const childrenNodes = [];
+
+        // Header
+        childrenNodes.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }));
+        childrenNodes.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }));
+        childrenNodes.push(new Paragraph({ alignment: AlignmentType.LEFT, border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "HELD AT " + document.getElementById('place').value.toUpperCase(), bold: true })] }));
+        childrenNodes.push(new Paragraph({ spacing: { before: 240 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] }));
+
+        // Map transcript dialogue
+        lines.forEach((text, i) => {
+            const match = text.match(/^(\[?.*?\]?):(.*)/);
+            let formattedLine = text;
+            
+            if(match) {
+                const name = match[1].toUpperCase();
+                const dialogue = match[2].trim();
+                if (style === 'tab') {
+                    formattedLine = name.padEnd(padSize) + ": " + dialogue;
+                } else {
+                    formattedLine = name + ": \t" + dialogue;
+                }
+            }
+
+            // Prepend line numbers every 5th line
+            let lineNumString = "    "; 
+            if (i % 5 === 0) {
+                lineNumString = (i + 1).toString().padEnd(4);
+            }
+
+            childrenNodes.push(new Paragraph({
+                spacing: { line: 480 },
+                children: [new TextRun({ text: lineNumString + formattedLine, font: "Courier New", size: 24 })]
+            }));
+        });
+
+        // Transcriber Certificate
+        childrenNodes.push(new Paragraph({ spacing: { before: 500 }, border: { top: { style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "TRANSCRIBER'S CERTIFICATE", bold: true })] }));
+        childrenNodes.push(new Paragraph({ children: [new TextRun("I hereby certify that the above is a true and correct record of the proceedings.") ] }));
+        childrenNodes.push(new Paragraph({ spacing: { before: 400 }, children: [new TextRun("SIGNED AT " + document.getElementById('place').value.toUpperCase() + " ON THIS ____ DAY OF ___________ 2026") ] }));
+
+        // Create the Document
         const doc = new Document({
             sections: [{
                 properties: { page: { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } },
@@ -207,36 +281,26 @@
                         children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun("Page "), new TextRun({ children: [PageNumber.CURRENT] })] })]
                     })
                 },
-                children: [
-                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }),
-                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }),
-                    new Paragraph({ alignment: AlignmentType.LEFT, border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "HELD AT " + document.getElementById('place').value.toUpperCase(), bold: true })] }),
-                    new Paragraph({ spacing: { before: 240 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] }),
-                    
-                    ...lines.map((text, i) => {
-                        const m = text.match(/^(\[?.*?\]?):(.*)/);
-                        let output = text;
-                        if(m) {
-                            const name = m[1].toUpperCase();
-                            const dialogue = m[2].trim();
-                            output = (style === 'tab') ? name.padEnd(pad) + ": " + dialogue : name + ": \t" + dialogue;
-                        }
-                        return new Paragraph({
-                            spacing: { line: 480 },
-                            children: [new TextRun({ text: (i%5==0 ? (i+1).toString().padEnd(4) : "    ") + output, font: "Courier New", size: 24 })]
-                        });
-                    }),
-                    
-                    new Paragraph({ spacing: { before: 500 }, border: { top: { style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "TRANSCRIBER'S CERTIFICATE", bold: true })] }),
-                    new Paragraph({ children: [new TextRun("I certify this is a true record.") ] }),
-                    new Paragraph({ spacing: { before: 400 }, children: [new TextRun("SIGNED AT " + document.getElementById('place').value.toUpperCase() + " ON THIS ____ DAY OF ___________ 2026") ] })
-                ]
+                children: childrenNodes
             }]
         });
 
-        Packer.toBlob(doc).then(blob => {
-            saveAs(blob, originalName.split('.')[0] + "_" + style + ".docx");
-        });
+        // Force native download (No external libraries)
+        const blob = await Packer.toBlob(doc);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.style.display = "none";
+        a.href = url;
+        
+        let safeName = originalName.split('.')[0] + "_" + style + ".docx";
+        a.download = safeName;
+        
+        document.body.appendChild(a);
+        a.click();
+        
+        // Cleanup
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
     }
 </script>
 
