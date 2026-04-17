@@ -146,7 +146,7 @@
 
     window.onload = function() { updateUI(); };
 
-    // --- NEW TURBOSCRIBE PARSER ---
+    // Parses Turboscribe text: Combines lines, removes brackets
     function parseTranscript(rawText) {
         let blocks = [];
         let linesArr = rawText.split('\n');
@@ -157,16 +157,14 @@
             let line = linesArr[i].trim();
             if (!line) continue;
 
-            // Matches standalone tags like "[Ms Ntuli]" or "[Ms Ntuli]:"
             let standaloneMatch = line.match(/^\[(.*?)\]:?$/);
-            // Matches inline tags like "[Ms Ntuli]: Hello"
             let inlineMatch = line.match(/^\[?(.*?)\]?:\s*(.*)/);
 
             if (standaloneMatch) {
                 if (currentSpeaker || currentDialogue.length > 0) {
                     blocks.push({ speaker: currentSpeaker, text: currentDialogue.join(' ') });
                 }
-                currentSpeaker = standaloneMatch[1].trim(); // Removes brackets automatically
+                currentSpeaker = standaloneMatch[1].trim(); 
                 currentDialogue = [];
             } else if (inlineMatch && inlineMatch[1].length < 40) {
                 if (currentSpeaker || currentDialogue.length > 0) {
@@ -202,24 +200,24 @@
                 text = await file.text();
             }
 
-            // 1. Run the new parser
             const dialogueBlocks = parseTranscript(text);
 
-            // 2. Find longest speaker name (without brackets)
             let longest = 0;
             dialogueBlocks.forEach(b => {
                 if (b.speaker && b.speaker.length > longest) longest = b.speaker.length;
             });
 
-            // 3. Export files
+            // Added explicit logging to track process
+            console.log("Starting DOCX export...");
             await exportDocx(dialogueBlocks, longest, originalName, style);
+            console.log("Starting PDF export...");
             exportPdf(dialogueBlocks, longest, originalName, style);
             
-            alert("Success! Check your downloads for the processed files.");
+            alert("Success! Both files have been generated and downloaded.");
 
         } catch (err) {
-            console.error(err);
-            alert("Error processing file: " + err.message);
+            console.error("FATAL ERROR: ", err);
+            alert("Error processing file. Please check the browser console for details.\n\n" + err.message);
         }
     }
 
@@ -227,7 +225,7 @@
         const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber } = docx;
         let forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
         const place = document.getElementById('place').value.toUpperCase();
-        const padSize = longest + 4; // Buffer past the longest name
+        const padSize = longest + 4; 
 
         const children = [
             new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }),
@@ -236,11 +234,8 @@
             new Paragraph({ spacing: { before: 240, after: 400 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] })
         ];
 
-        // Format Transcript Blocks
         blocks.forEach((block, i) => {
             let runs = [];
-            
-            // Add manual numbering for every 5th paragraph block
             let lineNumString = (i % 5 === 0) ? (i + 1).toString().padEnd(4) : "    ";
             runs.push(new TextRun({ text: lineNumString, font: "Courier New", size: 24 }));
 
@@ -251,20 +246,19 @@
                     let padLength = padSize - name.length;
                     let paddingSpaces = " ".repeat(padLength > 0 ? padLength : 0);
                     
-                    // ONLY underline the name, not the spaces
-                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: {} }));
+                    // FIXED: Explicitly set the underline type to single to prevent the Packer from crashing
+                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: "single" } }));
                     runs.push(new TextRun({ text: paddingSpaces + ": " + block.text, font: "Courier New", size: 24 }));
                 } else {
-                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: {} }));
+                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: "single" } }));
                     runs.push(new TextRun({ text: ": \t" + block.text, font: "Courier New", size: 24 }));
                 }
             } else {
-                // If it's just raw text without a speaker
-                runs.push(new TextRun({ text: block.text, font: "Courier New", size: 24 }));
+                runs.push(new TextRun({ text: String(block.text), font: "Courier New", size: 24 }));
             }
 
             children.push(new Paragraph({
-                spacing: { line: 480 }, // Double Spacing
+                spacing: { line: 480 },
                 children: runs
             }));
         });
@@ -302,7 +296,7 @@
                 pdf.addPage();
                 y = 20;
                 pageNum++;
-                physicalLineCount = 0; // Restart counting per page
+                physicalLineCount = 0; 
             }
         };
 
@@ -336,13 +330,12 @@
                 checkPage();
                 physicalLineCount++;
                 
-                // Number every 5th line physically
                 if (physicalLineCount % 5 === 0) {
                     pdf.text(physicalLineCount.toString(), 10, y); 
                 }
                 
                 pdf.text(textPart, 25, y);
-                y += 7; // Double spacing
+                y += 7; 
             });
         });
 
