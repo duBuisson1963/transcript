@@ -270,24 +270,29 @@
 
         docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `HELD AT ${meta.place.toUpperCase()}`, bold: true, size: 24 })] }));
         
+        // Solid Separator Line
         docChildren.push(new Paragraph({
             border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } },
-            spacing: { after: 240 },
+            spacing: { after: 120 },
             children: [new TextRun({ text: "" })]
         }));
 
+        // Case Number placed directly below the line, aligned to the right margin
+        if (meta.caseNumber && !meta.isDisciplinary) {
+            docChildren.push(new Paragraph({ 
+                alignment: AlignmentType.RIGHT, 
+                spacing: { before: 120, after: 120 }, 
+                children: [new TextRun({ text: `CASE NO: ${meta.caseNumber}`, bold: true, size: 24 })] 
+            }));
+        }
+
         // "In the matter between:"
         docChildren.push(new Paragraph({ 
-            spacing: { before: 240, after: 240 }, 
+            spacing: { before: 120, after: 240 }, 
             children: [new TextRun({ text: "In the matter between:", size: 24, underline: { type: "single" } })] 
         }));
 
-        // Case Number placed right before the Parties, aligned to the right margin
-        if (meta.caseNumber && !meta.isDisciplinary) {
-            docChildren.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 240 }, children: [new TextRun({ text: `CASE NO: ${meta.caseNumber}`, bold: true, size: 24 })] }));
-        }
-
-        // 2. Parties Table (Singular/Plural logic applied)
+        // 2. Parties Table
         function createPartyRow(leftText, rightText) {
             return new TableRow({
                 children: [
@@ -451,8 +456,15 @@
         pdf.setFontSize(12);
         pdf.text(`HELD AT ${meta.place.toUpperCase()}`, 105, y, { align: 'center' }); y += 5;
         
-        pdf.line(20, y, 190, y); y += 10;
+        pdf.line(20, y, 190, y); y += 8;
         
+        // Case Number placed directly below the line, aligned right
+        if (meta.caseNumber && !meta.isDisciplinary) {
+            pdf.setFont("helvetica", "bold"); 
+            pdf.text(`CASE NO: ${meta.caseNumber}`, 190, y, { align: 'right' });
+            y += 8;
+        }
+
         // "In the matter between:"
         pdf.setFont("helvetica", "normal");
         let matterText = "In the matter between:";
@@ -461,14 +473,7 @@
         pdf.line(20, y + 1, 20 + matterWidth, y + 1);
         y += 10;
 
-        // Case Number placed right above the parties, aligned right
-        if (meta.caseNumber && !meta.isDisciplinary) {
-            pdf.setFont("helvetica", "bold"); 
-            pdf.text(`CASE NO: ${meta.caseNumber}`, 190, y, { align: 'right' });
-            y += 10;
-        }
-
-        // 2. Parties Table (Singular/Plural logic applied)
+        // 2. Parties Table 
         pdf.setFont("helvetica", "bold");
         let validApps = meta.apps.filter(a => a);
         let validRess = meta.ress.filter(r => r);
