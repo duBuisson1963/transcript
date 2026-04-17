@@ -146,7 +146,6 @@
 
     window.onload = function() { updateUI(); };
 
-    // Formatter: Combines multiline Turboscribe text & removes brackets
     function formatTurboscribe(rawText) {
         let blocks = [];
         let linesArr = rawText.split('\n');
@@ -207,7 +206,6 @@
                 if (b.speaker && b.speaker.length > longest) longest = b.speaker.length;
             });
 
-            // Call exports
             await exportDocx(dialogueBlocks, longest, originalName, style);
             exportPdf(dialogueBlocks, longest, originalName, style);
 
@@ -218,8 +216,7 @@
     }
 
     async function exportDocx(blocks, longest, fileName, style) {
-        // Restored original exact syntax that saved properly
-        const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber, UnderlineType } = docx;
+        const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber } = docx;
         let forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
         const place = document.getElementById('place').value.toUpperCase();
         const padSize = longest + 4; 
@@ -233,7 +230,8 @@
 
         blocks.forEach((block, i) => {
             let runs = [];
-            let lineNumString = (i % 5 === 0) ? (i + 1).toString().padEnd(4) : "    ";
+            // Use NON-BREAKING spaces for the line numbers so Word respects them
+            let lineNumString = (i % 5 === 0) ? (i + 1).toString().padEnd(4, "\u00A0") : "\u00A0\u00A0\u00A0\u00A0";
             runs.push(new TextRun({ text: lineNumString, font: "Courier New", size: 24 }));
 
             if (block.speaker) {
@@ -241,13 +239,15 @@
                 
                 if (style === 'tabbed') {
                     let padLength = padSize - name.length;
-                    let paddingSpaces = " ".repeat(padLength > 0 ? padLength : 0);
                     
-                    // Fixed underline to correctly use library's internal constant
-                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: UnderlineType.SINGLE } }));
+                    // FIX: Using \u00A0 (Non-Breaking Space) forces Word to keep the spaces for alignment
+                    let paddingSpaces = "\u00A0".repeat(padLength > 0 ? padLength : 0);
+                    
+                    // FIX: type: "single" is the universal property that will not crash docx 7.1.1
+                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: "single" } }));
                     runs.push(new TextRun({ text: paddingSpaces + ": " + block.text, font: "Courier New", size: 24 }));
                 } else {
-                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: UnderlineType.SINGLE } }));
+                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: "single" } }));
                     runs.push(new TextRun({ text: ": \t" + block.text, font: "Courier New", size: 24 }));
                 }
             } else {
@@ -272,7 +272,6 @@
             }]
         });
 
-        // This is the specific line that crashed when the underline type was wrong. It is fixed.
         Packer.toBlob(doc).then(blob => {
             saveAs(blob, `${fileName}_${style}.docx`);
         });
