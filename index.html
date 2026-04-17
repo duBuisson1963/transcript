@@ -146,6 +146,13 @@
 
     window.onload = function() { updateUI(); };
 
+    // Helper for ordinals (1st, 2nd, 3rd)
+    function getOrdinal(n) {
+        let s = ["th", "st", "nd", "rd"];
+        let v = n % 100;
+        return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    }
+
     function formatTurboscribe(rawText) {
         let blocks = [];
         let linesArr = rawText.split('\n');
@@ -189,6 +196,24 @@
         const style = document.getElementById('formatStyle').value;
         const originalName = file.name.split('.')[0];
         
+        // Extract all Form Metadata to pass to the generators
+        const meta = {
+            forum: document.getElementById('forum').value,
+            otherForum: document.getElementById('otherForum').value,
+            place: document.getElementById('place').value.trim(),
+            isDisciplinary: document.getElementById('forum').value === 'DISCIPLINARY HEARING',
+            empName: document.getElementById('empName').value.trim(),
+            employeeName: document.getElementById('employeeName').value.trim(),
+            initiatorName: document.getElementById('initiatorName').value.trim(),
+            empRepName: document.getElementById('empRepName').value.trim(),
+            apps: Array.from(document.getElementById('appDiv').querySelectorAll('input')).map(i => i.value.trim()),
+            ress: Array.from(document.getElementById('resDiv').querySelectorAll('input')).map(i => i.value.trim()),
+            appRep: document.getElementById('appRep').value.trim(),
+            resRep: document.getElementById('resRep').value.trim(),
+            officialName: document.getElementById('officialName').value.trim(),
+            hearingDate: document.getElementById('hearingDate').value
+        };
+
         try {
             let text = "";
             if (file.name.endsWith('.docx')) {
@@ -206,8 +231,8 @@
                 if (b.speaker && b.speaker.length > longest) longest = b.speaker.length;
             });
 
-            await exportDocx(dialogueBlocks, longest, originalName, style);
-            exportPdf(dialogueBlocks, longest, originalName, style);
+            await exportDocx(dialogueBlocks, longest, originalName, style, meta);
+            exportPdf(dialogueBlocks, longest, originalName, style, meta);
 
         } catch (err) {
             console.error(err);
@@ -215,21 +240,13 @@
         }
     }
 
-    async function exportDocx(blocks, longest, fileName, style) {
+    async function exportDocx(blocks, longest, fileName, style, meta) {
         const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber, Table, TableRow, TableCell, WidthType } = docx;
-        let forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
-        const place = document.getElementById('place').value.toUpperCase();
         
         const lineNumColWidth = 600; 
-        const nameColWidth = (longest * 120) + 400; // Increased slightly to comfortably fit the colon
+        const nameColWidth = (longest * 120) + 400; 
         const alignRule = style === 'justified' ? AlignmentType.JUSTIFIED : AlignmentType.LEFT;
-
-        const docChildren = [
-            new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }),
-            new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }),
-            new Paragraph({ alignment: AlignmentType.LEFT, border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: `HELD AT ${place}`, bold: true })] }),
-            new Paragraph({ spacing: { before: 240, after: 400 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] })
-        ];
+        let forumName = meta.forum === 'OTHER' ? meta.otherForum : meta.forum;
 
         const noBorders = {
             top: { style: BorderStyle.NONE, size: 0, color: "auto" },
@@ -240,13 +257,64 @@
             insideVertical: { style: BorderStyle.NONE, size: 0, color: "auto" },
         };
 
+        const docChildren = [];
+
+        // 1. Header Information (Centered, 12pt and 22pt)
+        docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }));
+        docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }));
+        docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `HELD AT ${meta.place.toUpperCase()}`, bold: true, size: 24 })] })); // 12pt Centered
+        docChildren.push(new Paragraph({ spacing: { before: 240, after: 240 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true, size: 24 })] }));
+
+        // 2. Parties Table (Left & Right Justified)
+        function createPartyRow(leftText, rightText) {
+            return new TableRow({
+                children: [
+                    new TableCell({ borders: noBorders, children: [new Paragraph({ children: [new TextRun({ text: leftText, size: 24, bold: true })] })] }),
+                    new TableCell({ borders: noBorders, children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: rightText, size: 24, bold: true })] })] })
+                ]
+            });
+        }
+
+        let partyRows = [];
+        if (meta.isDisciplinary) {
+            if(meta.empName) partyRows.push(createPartyRow(meta.empName, "EMPLOYER"));
+            if(meta.employeeName) partyRows.push(createPartyRow(meta.employeeName, "EMPLOYEE"));
+        } else {
+            meta.apps.forEach((app, i) => { if(app) partyRows.push(createPartyRow(app, `${getOrdinal(i+1)} APPLICANT`)); });
+            meta.ress.forEach((res, i) => { if(res) partyRows.push(createPartyRow(res, `${getOrdinal(i+1)} RESPONDENT`)); });
+        }
+
+        if(partyRows.length > 0) {
+            docChildren.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: noBorders, rows: partyRows }));
+        }
+
+        // 3. Representatives & Officials (Left Justified, below parties)
+        docChildren.push(new Paragraph({ spacing: { before: 240 }, children: [] }));
+        if (meta.isDisciplinary) {
+            if (meta.initiatorName) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Initiator: ${meta.initiatorName}`, size: 24 })] }));
+            if (meta.empRepName) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Employee Representative: ${meta.empRepName}`, size: 24 })] }));
+            if (meta.officialName) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Chairperson: ${meta.officialName}`, size: 24 })] }));
+        } else {
+            if (meta.appRep) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Appearance for Applicant: ${meta.appRep}`, size: 24 })] }));
+            if (meta.resRep) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Appearance for Respondent: ${meta.resRep}`, size: 24 })] }));
+            if (meta.officialName) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Commissioner: ${meta.officialName}`, size: 24 })] }));
+        }
+        if (meta.hearingDate) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Date of Hearing: ${meta.hearingDate}`, size: 24 })] }));
+
+        // 4. Solid Separator Line
+        docChildren.push(new Paragraph({
+            border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } },
+            spacing: { after: 400 },
+            children: [new TextRun({ text: "" })]
+        }));
+
+        // 5. UNTOUCHED: Transcript Generation
         const tableRows = blocks.map((block, i) => {
             let lineNumString = (i % 5 === 0) ? (i + 1).toString() : "";
             let speakerName = block.speaker ? block.speaker.toUpperCase() : "";
 
             let nameRuns = [];
             if (speakerName) {
-                // Name gets the underline, colon is separate
                 nameRuns.push(new TextRun({ text: speakerName, font: "Courier New", size: 24, underline: { type: "single" } }));
                 nameRuns.push(new TextRun({ text: ":", font: "Courier New", size: 24 }));
             }
@@ -254,48 +322,27 @@
             return new TableRow({
                 children: [
                     new TableCell({
-                        width: { size: lineNumColWidth, type: WidthType.DXA },
-                        borders: noBorders,
-                        children: [
-                            new Paragraph({
-                                spacing: { line: 480, after: 280 }, // 14pt space after paragraph
-                                children: [new TextRun({ text: lineNumString, font: "Courier New", size: 24 })]
-                            })
-                        ]
+                        width: { size: lineNumColWidth, type: WidthType.DXA }, borders: noBorders,
+                        children: [new Paragraph({ spacing: { line: 480, after: 280 }, children: [new TextRun({ text: lineNumString, font: "Courier New", size: 24 })] })]
                     }),
                     new TableCell({
-                        width: { size: nameColWidth, type: WidthType.DXA },
-                        borders: noBorders,
-                        children: [
-                            new Paragraph({
-                                spacing: { line: 480, after: 280 }, // 14pt space after paragraph
-                                children: nameRuns
-                            })
-                        ]
+                        width: { size: nameColWidth, type: WidthType.DXA }, borders: noBorders,
+                        children: [new Paragraph({ spacing: { line: 480, after: 280 }, children: nameRuns })]
                     }),
                     new TableCell({
-                        width: { size: 100, type: WidthType.PERCENTAGE }, 
-                        borders: noBorders,
-                        children: [
-                            new Paragraph({
-                                alignment: alignRule,
-                                spacing: { line: 480, after: 280 }, // 14pt space after paragraph
-                                children: [new TextRun({ text: block.text, font: "Courier New", size: 24 })]
-                            })
-                        ]
+                        width: { size: 100, type: WidthType.PERCENTAGE }, borders: noBorders,
+                        children: [new Paragraph({ alignment: alignRule, spacing: { line: 480, after: 280 }, children: [new TextRun({ text: block.text, font: "Courier New", size: 24 })] })]
                     })
                 ]
             });
         });
 
-        docChildren.push(new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: tableRows
-        }));
+        docChildren.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: tableRows }));
 
+        // 6. Transcriber's Certificate
         docChildren.push(new Paragraph({ spacing: { before: 500 }, border: { top: { style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "TRANSCRIBER'S CERTIFICATE", bold: true })] }));
         docChildren.push(new Paragraph({ children: [new TextRun("I hereby certify that the above is a true and correct record of the proceedings.") ] }));
-        docChildren.push(new Paragraph({ spacing: { before: 400 }, children: [new TextRun(`SIGNED AT ${place} ON THIS ____ DAY OF ___________ 2026`) ] }));
+        docChildren.push(new Paragraph({ spacing: { before: 400 }, children: [new TextRun(`SIGNED AT ${meta.place.toUpperCase()} ON THIS ____ DAY OF ___________ 2026`) ] }));
 
         const doc = new Document({
             sections: [{
@@ -310,7 +357,7 @@
         });
     }
 
-    function exportPdf(blocks, longest, fileName, style) {
+    function exportPdf(blocks, longest, fileName, style, meta) {
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ format: 'a4', unit: 'mm' });
         
@@ -318,8 +365,7 @@
         let pageNum = 1;
         let physicalLineCount = 0; 
         const pageHeight = pdf.internal.pageSize.getHeight();
-        let forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
-        const place = document.getElementById('place').value.toUpperCase();
+        let forumName = meta.forum === 'OTHER' ? meta.otherForum : meta.forum;
 
         const checkPage = () => {
             if (y > pageHeight - 20) {
@@ -331,22 +377,55 @@
             }
         };
 
+        // 1. Header Information (Centered)
         pdf.setFont("helvetica", "normal"); pdf.setFontSize(12);
         pdf.text("IN THE", 105, y, { align: 'center' }); y += 8;
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(22);
         pdf.text(forumName.toUpperCase(), 105, y, { align: 'center' }); y += 10;
+        
         pdf.setFontSize(12);
-        pdf.text(`HELD AT ${place}`, 20, y); y += 2;
-        pdf.line(20, y, 190, y); y += 10;
-        pdf.text("IN THE MATTER BETWEEN:", 20, y); y += 15;
+        pdf.text(`HELD AT ${meta.place.toUpperCase()}`, 105, y, { align: 'center' }); y += 15; // 12pt Centered
+        
+        pdf.text("IN THE MATTER BETWEEN:", 20, y); y += 10;
 
+        // 2. Parties (Left & Right Justified)
+        if (meta.isDisciplinary) {
+            if(meta.empName) { pdf.text(meta.empName, 20, y); pdf.text("EMPLOYER", 190, y, { align: 'right' }); y += 7; }
+            if(meta.employeeName) { pdf.text(meta.employeeName, 20, y); pdf.text("EMPLOYEE", 190, y, { align: 'right' }); y += 7; }
+        } else {
+            meta.apps.forEach((app, i) => { if(app) { pdf.text(app, 20, y); pdf.text(`${getOrdinal(i+1)} APPLICANT`, 190, y, { align: 'right' }); y += 7; } });
+            meta.ress.forEach((res, i) => { if(res) { pdf.text(res, 20, y); pdf.text(`${getOrdinal(i+1)} RESPONDENT`, 190, y, { align: 'right' }); y += 7; } });
+        }
+
+        y += 5;
+
+        // 3. Representatives & Officials (Left Justified)
+        pdf.setFont("helvetica", "normal");
+        if (meta.isDisciplinary) {
+            if (meta.initiatorName) { pdf.text(`Initiator: ${meta.initiatorName}`, 20, y); y += 7; }
+            if (meta.empRepName) { pdf.text(`Employee Representative: ${meta.empRepName}`, 20, y); y += 7; }
+            if (meta.officialName) { pdf.text(`Chairperson: ${meta.officialName}`, 20, y); y += 7; }
+        } else {
+            if (meta.appRep) { pdf.text(`Appearance for Applicant: ${meta.appRep}`, 20, y); y += 7; }
+            if (meta.resRep) { pdf.text(`Appearance for Respondent: ${meta.resRep}`, 20, y); y += 7; }
+            if (meta.officialName) { pdf.text(`Commissioner: ${meta.officialName}`, 20, y); y += 7; }
+        }
+        if (meta.hearingDate) { pdf.text(`Date of Hearing: ${meta.hearingDate}`, 20, y); y += 7; }
+
+        y += 5;
+
+        // 4. Solid Separator Line
+        pdf.line(20, y, 190, y); 
+        y += 15; // Gap before transcript starts
+
+        // 5. UNTOUCHED: Transcript Generation
         pdf.setFont("courier", "normal");
         pdf.setFontSize(10);
         
         const lineNumX = 10;
         const nameX = 20;
         const charWidth = pdf.getTextWidth("X");
-        const dialogueX = nameX + (longest * charWidth) + 8; // Extra padding to accommodate the colon
+        const dialogueX = nameX + (longest * charWidth) + 8; 
 
         blocks.forEach(block => {
             let name = block.speaker ? block.speaker.toUpperCase() : "";
@@ -356,15 +435,11 @@
                 physicalLineCount++;
                 if (physicalLineCount % 5 === 0) pdf.text(physicalLineCount.toString(), lineNumX, y); 
                 
-                // Name & Underline
                 pdf.text(name, nameX, y);
                 let nameWidth = pdf.getTextWidth(name);
                 pdf.line(nameX, y + 1, nameX + nameWidth, y + 1); 
-                
-                // Colon placed directly after name
                 pdf.text(":", nameX + nameWidth, y); 
                 
-                // Dialogue Rendering
                 let splitDialogue = pdf.splitTextToSize(block.text, 190 - dialogueX);
                 
                 splitDialogue.forEach((textPart, idx) => {
@@ -377,8 +452,8 @@
                     pdf.text(textPart, dialogueX, y, { align: style === 'justified' ? 'justify' : 'left', maxWidth: 190 - dialogueX });
                 });
                 
-                y += 7; // Next line
-                y += 5; // Adds ~14 points gap below the block
+                y += 7; 
+                y += 5; 
             } else {
                 let splitText = pdf.splitTextToSize(block.text, 190 - nameX);
                 splitText.forEach((textPart, idx) => {
@@ -388,7 +463,7 @@
                     pdf.text(textPart, nameX, y, { align: style === 'justified' ? 'justify' : 'left', maxWidth: 190 - nameX });
                     y += 7; 
                 });
-                y += 5; // Adds ~14 points gap below the block
+                y += 5; 
             }
         });
 
@@ -398,7 +473,7 @@
         pdf.text("TRANSCRIBER'S CERTIFICATE", 20, y); y += 8;
         pdf.setFont("helvetica", "normal");
         pdf.text("I hereby certify that the above is a true and correct record of the proceedings.", 20, y); y += 10;
-        pdf.text(`SIGNED AT ${place} ON THIS ____ DAY OF ___________ 2026`, 20, y);
+        pdf.text(`SIGNED AT ${meta.place.toUpperCase()} ON THIS ____ DAY OF ___________ 2026`, 20, y);
         pdf.text(`Page ${pageNum}`, 190, 287, { align: 'right' });
         
         pdf.save(`${fileName}_${style}.pdf`);
