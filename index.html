@@ -146,7 +146,6 @@
 
     window.onload = function() { updateUI(); };
 
-    // PARSER: Combines Turboscribe text & removes brackets
     function formatTurboscribe(rawText) {
         let blocks = [];
         let linesArr = rawText.split('\n');
@@ -216,18 +215,15 @@
         }
     }
 
-    // WORD GENERATOR: Using an Invisible Table for strict columns
     async function exportDocx(blocks, longest, fileName, style) {
         const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber, Table, TableRow, TableCell, WidthType } = docx;
         let forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
         const place = document.getElementById('place').value.toUpperCase();
         
-        // Calculate exact column widths (in twips, approx 120 twips per char)
         const lineNumColWidth = 600; 
-        const nameColWidth = (longest * 120) + 200; // Locked strictly to longest name width
+        const nameColWidth = (longest * 120) + 400; // Increased slightly to comfortably fit the colon
         const alignRule = style === 'justified' ? AlignmentType.JUSTIFIED : AlignmentType.LEFT;
 
-        // Base document children setup
         const docChildren = [
             new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }),
             new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }),
@@ -235,7 +231,6 @@
             new Paragraph({ spacing: { before: 240, after: 400 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] })
         ];
 
-        // Create Invisible Borders Definition
         const noBorders = {
             top: { style: BorderStyle.NONE, size: 0, color: "auto" },
             bottom: { style: BorderStyle.NONE, size: 0, color: "auto" },
@@ -245,44 +240,47 @@
             insideVertical: { style: BorderStyle.NONE, size: 0, color: "auto" },
         };
 
-        // Create the 3-Column Table
         const tableRows = blocks.map((block, i) => {
             let lineNumString = (i % 5 === 0) ? (i + 1).toString() : "";
             let speakerName = block.speaker ? block.speaker.toUpperCase() : "";
 
+            let nameRuns = [];
+            if (speakerName) {
+                // Name gets the underline, colon is separate
+                nameRuns.push(new TextRun({ text: speakerName, font: "Courier New", size: 24, underline: { type: "single" } }));
+                nameRuns.push(new TextRun({ text: ":", font: "Courier New", size: 24 }));
+            }
+
             return new TableRow({
                 children: [
-                    // Col 1: Line Number
                     new TableCell({
                         width: { size: lineNumColWidth, type: WidthType.DXA },
                         borders: noBorders,
                         children: [
                             new Paragraph({
-                                spacing: { line: 480 },
+                                spacing: { line: 480, after: 280 }, // 14pt space after paragraph
                                 children: [new TextRun({ text: lineNumString, font: "Courier New", size: 24 })]
                             })
                         ]
                     }),
-                    // Col 2: Speaker Name (Underlined)
                     new TableCell({
                         width: { size: nameColWidth, type: WidthType.DXA },
                         borders: noBorders,
                         children: [
                             new Paragraph({
-                                spacing: { line: 480 },
-                                children: [new TextRun({ text: speakerName, font: "Courier New", size: 24, underline: { type: "single" } })]
+                                spacing: { line: 480, after: 280 }, // 14pt space after paragraph
+                                children: nameRuns
                             })
                         ]
                     }),
-                    // Col 3: Dialogue (Justified/Left)
                     new TableCell({
-                        width: { size: 100, type: WidthType.PERCENTAGE }, // Takes the rest of the space
+                        width: { size: 100, type: WidthType.PERCENTAGE }, 
                         borders: noBorders,
                         children: [
                             new Paragraph({
                                 alignment: alignRule,
-                                spacing: { line: 480 },
-                                children: [new TextRun({ text: speakerName ? ":  " + block.text : block.text, font: "Courier New", size: 24 })]
+                                spacing: { line: 480, after: 280 }, // 14pt space after paragraph
+                                children: [new TextRun({ text: block.text, font: "Courier New", size: 24 })]
                             })
                         ]
                     })
@@ -312,7 +310,6 @@
         });
     }
 
-    // PDF GENERATOR: Using strict X/Y columns to mirror the Word table
     function exportPdf(blocks, longest, fileName, style) {
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ format: 'a4', unit: 'mm' });
@@ -334,7 +331,6 @@
             }
         };
 
-        // Header
         pdf.setFont("helvetica", "normal"); pdf.setFontSize(12);
         pdf.text("IN THE", 105, y, { align: 'center' }); y += 8;
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(22);
@@ -344,15 +340,13 @@
         pdf.line(20, y, 190, y); y += 10;
         pdf.text("IN THE MATTER BETWEEN:", 20, y); y += 15;
 
-        // Content (Strict Column Alignment)
         pdf.setFont("courier", "normal");
         pdf.setFontSize(10);
         
-        // Exact X markers for columns
         const lineNumX = 10;
         const nameX = 20;
         const charWidth = pdf.getTextWidth("X");
-        const dialogueX = nameX + (longest * charWidth) + 5; // Tab stop fixed to longest name
+        const dialogueX = nameX + (longest * charWidth) + 8; // Extra padding to accommodate the colon
 
         blocks.forEach(block => {
             let name = block.speaker ? block.speaker.toUpperCase() : "";
@@ -362,24 +356,29 @@
                 physicalLineCount++;
                 if (physicalLineCount % 5 === 0) pdf.text(physicalLineCount.toString(), lineNumX, y); 
                 
-                // Col 2: Name & Underline
+                // Name & Underline
                 pdf.text(name, nameX, y);
                 let nameWidth = pdf.getTextWidth(name);
-                pdf.line(nameX, y + 1, nameX + nameWidth, y + 1); // Physical underline
+                pdf.line(nameX, y + 1, nameX + nameWidth, y + 1); 
                 
-                // Col 3: Dialogue Wrapping
-                let splitDialogue = pdf.splitTextToSize(":  " + block.text, 190 - dialogueX);
+                // Colon placed directly after name
+                pdf.text(":", nameX + nameWidth, y); 
+                
+                // Dialogue Rendering
+                let splitDialogue = pdf.splitTextToSize(block.text, 190 - dialogueX);
                 
                 splitDialogue.forEach((textPart, idx) => {
                     if (idx > 0) {
-                        y += 7; // Double spacing
+                        y += 7; 
                         checkPage();
                         physicalLineCount++;
                         if (physicalLineCount % 5 === 0) pdf.text(physicalLineCount.toString(), lineNumX, y); 
                     }
                     pdf.text(textPart, dialogueX, y, { align: style === 'justified' ? 'justify' : 'left', maxWidth: 190 - dialogueX });
                 });
-                y += 7; // Move down for next block
+                
+                y += 7; // Next line
+                y += 5; // Adds ~14 points gap below the block
             } else {
                 let splitText = pdf.splitTextToSize(block.text, 190 - nameX);
                 splitText.forEach((textPart, idx) => {
@@ -389,10 +388,10 @@
                     pdf.text(textPart, nameX, y, { align: style === 'justified' ? 'justify' : 'left', maxWidth: 190 - nameX });
                     y += 7; 
                 });
+                y += 5; // Adds ~14 points gap below the block
             }
         });
 
-        // Footer
         checkPage();
         y += 10;
         pdf.setFont("helvetica", "bold"); pdf.setFontSize(12);
