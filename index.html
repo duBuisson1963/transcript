@@ -199,6 +199,7 @@
             forum: document.getElementById('forum').value,
             otherForum: document.getElementById('otherForum').value,
             place: document.getElementById('place').value.trim(),
+            caseNumber: document.getElementById('caseNumber').value.trim(),
             isDisciplinary: document.getElementById('forum').value === 'DISCIPLINARY HEARING',
             empName: document.getElementById('empName').value.trim(),
             employeeName: document.getElementById('employeeName').value.trim(),
@@ -259,7 +260,14 @@
 
         // 1. Header Information
         docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }));
-        docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }));
+        
+        if (forumName === "COMMISSION FOR CONCILIATION, MEDIATION & ARBITRATION") {
+            docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "COMMISSION FOR CONCILIATION,", bold: true, size: 44 })] }));
+            docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "MEDIATION & ARBITRATION", bold: true, size: 44 })] }));
+        } else {
+            docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }));
+        }
+
         docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `HELD AT ${meta.place.toUpperCase()}`, bold: true, size: 24 })] }));
         
         docChildren.push(new Paragraph({
@@ -268,20 +276,18 @@
             children: [new TextRun({ text: "" })]
         }));
 
-        // "In the matter between:" (Sentence case, no bold, underlined)
+        // "In the matter between:"
         docChildren.push(new Paragraph({ 
-            spacing: { before: 240, after: 120 }, 
+            spacing: { before: 240, after: 240 }, 
             children: [new TextRun({ text: "In the matter between:", size: 24, underline: { type: "single" } })] 
         }));
 
-        // Solid Separator Line under "In the matter between:"
-        docChildren.push(new Paragraph({
-            border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } },
-            spacing: { after: 240 },
-            children: [new TextRun({ text: "" })]
-        }));
+        // Case Number placed right before the Parties, aligned to the right margin
+        if (meta.caseNumber && !meta.isDisciplinary) {
+            docChildren.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 240 }, children: [new TextRun({ text: `CASE NO: ${meta.caseNumber}`, bold: true, size: 24 })] }));
+        }
 
-        // 2. Parties Table (Sentence Case for roles)
+        // 2. Parties Table (Singular/Plural logic applied)
         function createPartyRow(leftText, rightText) {
             return new TableRow({
                 children: [
@@ -292,13 +298,15 @@
         }
 
         let partyRows = [];
+        let validApps = meta.apps.filter(a => a);
+        let validRess = meta.ress.filter(r => r);
         
         function addAndRow() {
             partyRows.push(new TableRow({
                 children: [
                     new TableCell({ 
                         borders: noBorders, 
-                        children: [new Paragraph({ spacing: { before: 480, after: 480 }, children: [new TextRun({ text: "AND", size: 24, bold: true })] })] 
+                        children: [new Paragraph({ spacing: { before: 480, after: 480 }, children: [new TextRun({ text: "and", size: 24, bold: true })] })] 
                     }),
                     new TableCell({ borders: noBorders, children: [new Paragraph({ children: [] })] })
                 ]
@@ -310,28 +318,32 @@
             if(meta.empName && meta.employeeName) addAndRow();
             if(meta.employeeName) partyRows.push(createPartyRow(meta.employeeName, "Employee"));
         } else {
-            let hasApps = false;
-            meta.apps.forEach((app, i) => { if(app) { partyRows.push(createPartyRow(app, `${getOrdinal(i+1)} Applicant`)); hasApps = true; } });
+            validApps.forEach((app, i) => { 
+                let roleLabel = validApps.length === 1 ? "Applicant" : `${getOrdinal(i+1)} Applicant`;
+                partyRows.push(createPartyRow(app, roleLabel)); 
+            });
             
-            let hasRes = meta.ress.some(r => r);
-            if (hasApps && hasRes) addAndRow();
+            if (validApps.length > 0 && validRess.length > 0) addAndRow();
 
-            meta.ress.forEach((res, i) => { if(res) { partyRows.push(createPartyRow(res, `${getOrdinal(i+1)} Respondent`)); } });
+            validRess.forEach((res, i) => { 
+                let roleLabel = validRess.length === 1 ? "Respondent" : `${getOrdinal(i+1)} Respondent`;
+                partyRows.push(createPartyRow(res, roleLabel)); 
+            });
         }
 
         if(partyRows.length > 0) {
             docChildren.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: noBorders, rows: partyRows }));
         }
 
-        // 3. Representatives & Officials (Courier New, Underlined Label, Separation from parties)
-        docChildren.push(new Paragraph({ spacing: { before: 480 }, children: [] })); // Extra separation gap
+        // 3. Representatives & Officials
+        docChildren.push(new Paragraph({ spacing: { before: 800 }, children: [] })); 
         
         function createRolePara(roleLabel, personName) {
             return new Paragraph({
                 spacing: { after: 120 },
                 children: [
-                    new TextRun({ text: roleLabel + ": ", font: "Courier New", size: 24, underline: { type: "single" } }),
-                    new TextRun({ text: personName, font: "Courier New", size: 24 })
+                    new TextRun({ text: roleLabel + ": ", size: 20 }), 
+                    new TextRun({ text: personName, size: 20 })
                 ]
             });
         }
@@ -423,66 +435,84 @@
             }
         };
 
-        // 1. Header Information (Centered)
+        // 1. Header Information
         pdf.setFont("helvetica", "normal"); pdf.setFontSize(12);
         pdf.text("IN THE", 105, y, { align: 'center' }); y += 8;
-        pdf.setFont("helvetica", "bold"); pdf.setFontSize(22);
-        pdf.text(forumName.toUpperCase(), 105, y, { align: 'center' }); y += 10;
+
+        if (forumName === "COMMISSION FOR CONCILIATION, MEDIATION & ARBITRATION") {
+            pdf.setFont("helvetica", "bold"); pdf.setFontSize(22);
+            pdf.text("COMMISSION FOR CONCILIATION,", 105, y, { align: 'center' }); y += 10;
+            pdf.text("MEDIATION & ARBITRATION", 105, y, { align: 'center' }); y += 10;
+        } else {
+            pdf.setFont("helvetica", "bold"); pdf.setFontSize(22);
+            pdf.text(forumName.toUpperCase(), 105, y, { align: 'center' }); y += 10;
+        }
         
         pdf.setFontSize(12);
         pdf.text(`HELD AT ${meta.place.toUpperCase()}`, 105, y, { align: 'center' }); y += 5;
         
         pdf.line(20, y, 190, y); y += 10;
         
-        // "In the matter between:" (Sentence case, normal font, underlined)
+        // "In the matter between:"
         pdf.setFont("helvetica", "normal");
         let matterText = "In the matter between:";
         pdf.text(matterText, 20, y);
         let matterWidth = pdf.getTextWidth(matterText);
-        pdf.line(20, y + 1, 20 + matterWidth, y + 1); // Underline it
-        y += 5;
-        
-        // Solid line below "In the matter between:"
-        pdf.line(20, y, 190, y); 
+        pdf.line(20, y + 1, 20 + matterWidth, y + 1);
         y += 10;
 
-        // 2. Parties (Sentence Case for roles)
+        // Case Number placed right above the parties, aligned right
+        if (meta.caseNumber && !meta.isDisciplinary) {
+            pdf.setFont("helvetica", "bold"); 
+            pdf.text(`CASE NO: ${meta.caseNumber}`, 190, y, { align: 'right' });
+            y += 10;
+        }
+
+        // 2. Parties Table (Singular/Plural logic applied)
         pdf.setFont("helvetica", "bold");
+        let validApps = meta.apps.filter(a => a);
+        let validRess = meta.ress.filter(r => r);
+
         if (meta.isDisciplinary) {
             if(meta.empName) { pdf.text(meta.empName, 20, y); pdf.text("Employer", 190, y, { align: 'right' }); y += 7; }
             
             if(meta.empName && meta.employeeName) {
                 y += 7; 
-                pdf.text("AND", 20, y);
+                pdf.text("and", 20, y);
                 y += 14; 
             }
             
             if(meta.employeeName) { pdf.text(meta.employeeName, 20, y); pdf.text("Employee", 190, y, { align: 'right' }); y += 7; }
         } else {
-            let hasApps = false;
-            meta.apps.forEach((app, i) => { if(app) { pdf.text(app, 20, y); pdf.text(`${getOrdinal(i+1)} Applicant`, 190, y, { align: 'right' }); y += 7; hasApps = true; } });
+            validApps.forEach((app, i) => { 
+                let roleLabel = validApps.length === 1 ? "Applicant" : `${getOrdinal(i+1)} Applicant`;
+                pdf.text(app, 20, y); 
+                pdf.text(roleLabel, 190, y, { align: 'right' }); 
+                y += 7; 
+            });
             
-            let hasRes = meta.ress.some(r => r);
-            if (hasApps && hasRes) {
+            if (validApps.length > 0 && validRess.length > 0) {
                 y += 7;
-                pdf.text("AND", 20, y);
+                pdf.text("and", 20, y);
                 y += 14;
             }
 
-            meta.ress.forEach((res, i) => { if(res) { pdf.text(res, 20, y); pdf.text(`${getOrdinal(i+1)} Respondent`, 190, y, { align: 'right' }); y += 7; } });
+            validRess.forEach((res, i) => { 
+                let roleLabel = validRess.length === 1 ? "Respondent" : `${getOrdinal(i+1)} Respondent`;
+                pdf.text(res, 20, y); 
+                pdf.text(roleLabel, 190, y, { align: 'right' }); 
+                y += 7; 
+            });
         }
 
-        y += 15; // Extra separation before roles
+        y += 25; 
 
-        // 3. Representatives & Officials (Courier font, underlined labels)
-        pdf.setFont("courier", "normal");
+        // 3. Representatives & Officials
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
         
         function printPdfRole(roleLabel, personName) {
-            let labelText = roleLabel + ": ";
-            pdf.text(labelText, 20, y);
-            let labelWidth = pdf.getTextWidth(labelText);
-            pdf.line(20, y + 1, 20 + labelWidth - pdf.getTextWidth(" "), y + 1); // Underline label
-            pdf.text(personName, 20 + labelWidth, y);
+            pdf.text(roleLabel + ": " + personName, 20, y);
             y += 7;
         }
 
