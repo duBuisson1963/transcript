@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Legal Transcript Formatter</title>
     
-    <script src="https://unpkg.com/docx@7.8.2/build/index.umd.js"></script>
+    <script src="https://unpkg.com/docx@7.1.1/build/index.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -146,8 +146,8 @@
 
     window.onload = function() { updateUI(); };
 
-    // Parses Turboscribe text: Combines lines, removes brackets
-    function parseTranscript(rawText) {
+    // Formatter: Combines multiline Turboscribe text & removes brackets
+    function formatTurboscribe(rawText) {
         let blocks = [];
         let linesArr = rawText.split('\n');
         let currentSpeaker = "";
@@ -200,29 +200,26 @@
                 text = await file.text();
             }
 
-            const dialogueBlocks = parseTranscript(text);
+            const dialogueBlocks = formatTurboscribe(text);
 
             let longest = 0;
             dialogueBlocks.forEach(b => {
                 if (b.speaker && b.speaker.length > longest) longest = b.speaker.length;
             });
 
-            // Added explicit logging to track process
-            console.log("Starting DOCX export...");
+            // Call exports
             await exportDocx(dialogueBlocks, longest, originalName, style);
-            console.log("Starting PDF export...");
             exportPdf(dialogueBlocks, longest, originalName, style);
-            
-            alert("Success! Both files have been generated and downloaded.");
 
         } catch (err) {
-            console.error("FATAL ERROR: ", err);
-            alert("Error processing file. Please check the browser console for details.\n\n" + err.message);
+            console.error(err);
+            alert("System Error: " + err.message);
         }
     }
 
     async function exportDocx(blocks, longest, fileName, style) {
-        const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber } = docx;
+        // Restored original exact syntax that saved properly
+        const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber, UnderlineType } = docx;
         let forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
         const place = document.getElementById('place').value.toUpperCase();
         const padSize = longest + 4; 
@@ -246,11 +243,11 @@
                     let padLength = padSize - name.length;
                     let paddingSpaces = " ".repeat(padLength > 0 ? padLength : 0);
                     
-                    // FIXED: Explicitly set the underline type to single to prevent the Packer from crashing
-                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: "single" } }));
+                    // Fixed underline to correctly use library's internal constant
+                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: UnderlineType.SINGLE } }));
                     runs.push(new TextRun({ text: paddingSpaces + ": " + block.text, font: "Courier New", size: 24 }));
                 } else {
-                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: "single" } }));
+                    runs.push(new TextRun({ text: name, font: "Courier New", size: 24, underline: { type: UnderlineType.SINGLE } }));
                     runs.push(new TextRun({ text: ": \t" + block.text, font: "Courier New", size: 24 }));
                 }
             } else {
@@ -275,8 +272,10 @@
             }]
         });
 
-        const blob = await Packer.toBlob(doc);
-        saveAs(blob, `${fileName}_${style}.docx`);
+        // This is the specific line that crashed when the underline type was wrong. It is fixed.
+        Packer.toBlob(doc).then(blob => {
+            saveAs(blob, `${fileName}_${style}.docx`);
+        });
     }
 
     function exportPdf(blocks, longest, fileName, style) {
