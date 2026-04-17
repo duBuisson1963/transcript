@@ -8,15 +8,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
 
 <style>
-:root {
-    --legal-blue: #1a2a6c;
-    --border: #ccd1d9;
-}
+:root { --legal-blue: #1a2a6c; --border: #ccd1d9; }
 
 body {
     font-family: 'Segoe UI', Tahoma, sans-serif;
     background: linear-gradient(135deg, #eef2f7, #d9e2ec);
     padding: 20px;
+    color: #333;
 }
 
 .wrapper {
@@ -30,39 +28,56 @@ body {
 }
 
 h2 {
+    border-bottom: 2px solid var(--legal-blue);
+    padding-bottom: 10px;
     color: var(--legal-blue);
     letter-spacing: 1px;
 }
 
 .section {
-    margin-bottom: 25px;
+    margin-bottom: 30px;
     padding: 20px;
     border: 1px solid var(--border);
     border-radius: 8px;
 }
 
 label {
-    font-weight: 600;
-    font-size: 0.8rem;
-    margin-top: 10px;
     display: block;
+    font-weight: 700;
+    margin: 15px 0 5px;
+    font-size: 0.75rem;
+    color: #555;
 }
 
 input, select {
     width: 100%;
-    padding: 10px;
-    margin-top: 5px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
 }
 
 .hidden { display: none; }
 
+.dynamic-list {
+    margin-top: 10px;
+    padding: 10px;
+    background: #f9f9f9;
+    border-radius: 6px;
+}
+
+.dynamic-item { margin-bottom: 8px; }
+
+.btn-group { text-align: center; margin-top: 40px; }
+
 .save-btn {
     background: var(--legal-blue);
     color: white;
-    padding: 15px 40px;
+    padding: 18px 45px;
     border: none;
     border-radius: 8px;
     cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: bold;
 }
 </style>
 </head>
@@ -74,59 +89,128 @@ input, select {
 
 <div class="section">
 <label>Forum</label>
-<select id="forum">
-<option>DISCIPLINARY HEARING</option>
-<option>CCMA</option>
-<option>LABOUR COURT</option>
+<select id="forum" onchange="toggleForumUI()">
+<option value="">-- Select Forum --</option>
+<option value="DISCIPLINARY HEARING">Disciplinary Hearing</option>
+<option value="CCMA">CCMA</option>
+<option value="LABOUR COURT">Labour Court</option>
+<option value="OTHER">Other</option>
 </select>
 
-<label>Place</label>
-<input type="text" id="place" placeholder="e.g. Johannesburg">
+<input type="text" id="otherForum" class="hidden" placeholder="Enter custom forum..." style="margin-top:10px">
 
+<div style="display:flex; gap:20px;">
+<div style="flex:1">
+<label>Place</label>
+<input type="text" id="place" oninput="handlePrefixLogic()">
+</div>
+<div style="flex:1" id="caseNumContainer">
 <label>Case Number</label>
 <input type="text" id="caseNumber">
 </div>
+</div>
+</div>
+
+<div class="section" id="partyControls">
+
+<div id="disciplinaryFields" class="hidden">
+<label>Employer</label><input type="text" id="employer">
+<label>Employee</label><input type="text" id="employee">
+</div>
+
+<div id="legalFields" class="hidden">
+<div style="display:flex; gap:20px;">
+<div style="flex:1">
+<label>Applicants</label>
+<input type="number" id="countApp" value="1" min="1" oninput="renderInputs('App')">
+</div>
+<div style="flex:1">
+<label>Respondents</label>
+<input type="number" id="countRes" value="1" min="1" oninput="renderInputs('Res')">
+</div>
+</div>
+
+<div id="appList" class="dynamic-list"></div>
+<div id="resList" class="dynamic-list"></div>
+</div>
+</div>
 
 <div class="section">
-<label>Upload Transcript (.txt / .docx)</label>
+<label>Chairperson / Commissioner</label>
+<input type="text" id="nameOfficial">
+
+<label>Witnesses</label>
+<input type="number" id="countWit" value="1" min="0" oninput="renderInputs('Wit')">
+<div id="witList" class="dynamic-list"></div>
+
+<label>Date</label>
+<input type="date" id="hearingDate">
+</div>
+
+<div class="section">
+<label>Upload Transcript</label>
 <input type="file" id="fileIn" accept=".txt,.docx">
 </div>
 
-<div style="text-align:center">
+<div class="btn-group">
 <button type="button" class="save-btn" onclick="processAndSave()">Generate & Save</button>
 </div>
 </div>
 
 <script>
-async function processAndSave() {
-    try {
-        const fileInput = document.getElementById('fileIn');
-        if (!fileInput.files.length) {
-            alert("Upload a file.");
-            return;
-        }
+function toggleForumUI() {
+    const forum = document.getElementById('forum').value;
+    document.getElementById('disciplinaryFields').classList.add('hidden');
+    document.getElementById('legalFields').classList.add('hidden');
+    document.getElementById('otherForum').classList.add('hidden');
 
-        const file = fileInput.files[0];
-        let rawText = "";
+    if (forum === "DISCIPLINARY HEARING") {
+        document.getElementById('disciplinaryFields').classList.remove('hidden');
+    } else if (forum === "OTHER") {
+        document.getElementById('legalFields').classList.remove('hidden');
+        document.getElementById('otherForum').classList.remove('hidden');
+    } else if (forum !== "") {
+        document.getElementById('legalFields').classList.remove('hidden');
+    }
 
-        if (file.name.endsWith('.docx')) {
-            const buffer = await file.arrayBuffer();
-            const res = await mammoth.extractRawText({arrayBuffer: buffer});
-            rawText = res.value;
-        } else {
-            rawText = await file.text();
-        }
+    renderInputs('App');
+    renderInputs('Res');
+    renderInputs('Wit');
+}
 
-        const lines = rawText.split('\n').filter(l => l.trim() !== "");
-        await createWordDocument(lines, file.name);
+function renderInputs(type) {
+    const count = document.getElementById('count' + type)?.value || 0;
+    const container = document.getElementById(type.toLowerCase() + 'List');
+    if (!container) return;
 
-    } catch (e) {
-        alert("ERROR: " + e.message);
-        console.error(e);
+    container.innerHTML = "";
+    for (let i = 1; i <= count; i++) {
+        container.innerHTML += `<div class="dynamic-item"><input placeholder="${type} ${i}"></div>`;
     }
 }
 
+function handlePrefixLogic(){}
+
+async function processAndSave() {
+    const file = document.getElementById('fileIn').files[0];
+    if (!file) return alert("Upload a file");
+
+    let rawText = "";
+
+    if (file.name.endsWith('.docx')) {
+        const buffer = await file.arrayBuffer();
+        const res = await mammoth.extractRawText({arrayBuffer: buffer});
+        rawText = res.value;
+    } else {
+        rawText = await file.text();
+    }
+
+    const lines = rawText.split('\n').filter(l => l.trim());
+    await createWordDocument(lines, file.name);
+}
+
 async function createWordDocument(lines, originalName) {
+
     const { Document, Packer, Paragraph, TextRun, AlignmentType, TabStopType, PageNumber } = docx;
 
     const children = [];
@@ -137,9 +221,8 @@ async function createWordDocument(lines, originalName) {
         children: [new TextRun("LEGAL TRANSCRIPT")]
     }));
 
-    children.push(new Paragraph(" "));
+    children.push(new Paragraph(""));
 
-    // TRANSCRIPT WITH REAL ALIGNMENT
     lines.forEach((text, i) => {
 
         const match = text.match(/^\s*\[?([^\]:]+)\]?\s*:\s*(.*)$/);
@@ -155,12 +238,7 @@ async function createWordDocument(lines, originalName) {
         let lineNum = (i % 5 === 0) ? (i + 1).toString().padEnd(4) : "    ";
 
         children.push(new Paragraph({
-            tabStops: [
-                {
-                    type: TabStopType.LEFT,
-                    position: 4000
-                }
-            ],
+            tabStops: [{ type: TabStopType.LEFT, position: 4000 }],
             spacing: { line: 360 },
             children: [
                 new TextRun({
@@ -197,7 +275,7 @@ async function createWordDocument(lines, originalName) {
         }]
     });
 
-    let safeName = originalName.split('.')[0] + ".docx";
+    let safeName = originalName.replace(/\.[^/.]+$/, "") + ".docx";
 
     try {
         const blob = await Packer.toBlob(doc);
@@ -217,15 +295,14 @@ async function createWordDocument(lines, originalName) {
             setTimeout(() => {
                 URL.revokeObjectURL(url);
                 document.body.removeChild(a);
-            }, 100);
+            }, 200);
         }
 
     } catch (err) {
-        console.error("DOCX failed:", err);
+        console.error(err);
 
-        // FALLBACK TXT DOWNLOAD
-        const fallbackBlob = new Blob([lines.join("\n")], { type: "text/plain" });
-        const url = URL.createObjectURL(fallbackBlob);
+        const fallback = new Blob([lines.join("\n")], { type: "text/plain" });
+        const url = URL.createObjectURL(fallback);
 
         const a = document.createElement("a");
         a.href = url;
@@ -237,9 +314,9 @@ async function createWordDocument(lines, originalName) {
         setTimeout(() => {
             URL.revokeObjectURL(url);
             document.body.removeChild(a);
-        }, 100);
+        }, 200);
 
-        alert("DOCX failed — downloaded TXT instead.");
+        alert("DOCX failed — TXT downloaded.");
     }
 }
 </script>
