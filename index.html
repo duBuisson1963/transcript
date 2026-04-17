@@ -1,307 +1,247 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Legal Transcript Formatter Pro</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/7.8.2/docx.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+<meta charset="UTF-8">
+<title>Legal Transcript Formatter Pro</title>
 
-    <style>
-        :root { --legal-blue: #1a2a6c; --border: #ccd1d9; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f4f7f9; padding: 20px; color: #333; }
-        .wrapper { max-width: 900px; margin: auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-        h2 { border-bottom: 2px solid var(--legal-blue); padding-bottom: 10px; color: var(--legal-blue); }
-        .section { margin-bottom: 30px; padding: 20px; border: 1px solid var(--border); border-radius: 8px; }
-        label { display: block; font-weight: 700; margin: 15px 0 5px; text-transform: uppercase; font-size: 0.75rem; color: #555; }
-        input, select { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
-        .hidden { display: none; }
-        .dynamic-list { margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 6px; }
-        .dynamic-item { margin-bottom: 8px; }
-        .btn-group { text-align: center; margin-top: 40px; }
-        .save-btn { background: var(--legal-blue); color: white; padding: 18px 45px; border: none; border-radius: 8px; cursor: pointer; font-size: 1.1rem; font-weight: bold; transition: 0.2s; }
-        .save-btn:hover { background: #0d1a4d; transform: translateY(-2px); }
-    </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/7.8.2/docx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+
+<style>
+:root {
+    --legal-blue: #1a2a6c;
+    --border: #ccd1d9;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    background: linear-gradient(135deg, #eef2f7, #d9e2ec);
+    padding: 20px;
+}
+
+.wrapper {
+    max-width: 900px;
+    margin: auto;
+    background: white;
+    padding: 40px;
+    border-radius: 12px;
+    border-top: 6px solid var(--legal-blue);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+h2 {
+    color: var(--legal-blue);
+    letter-spacing: 1px;
+}
+
+.section {
+    margin-bottom: 25px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+label {
+    font-weight: 600;
+    font-size: 0.8rem;
+    margin-top: 10px;
+    display: block;
+}
+
+input, select {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+}
+
+.hidden { display: none; }
+
+.save-btn {
+    background: var(--legal-blue);
+    color: white;
+    padding: 15px 40px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+</style>
 </head>
+
 <body>
 
 <div class="wrapper">
-    <h2>Legal Transcript Formatter</h2>
+<h2>Legal Transcript Formatter</h2>
 
-    <div class="section">
-        <label>Forum</label>
-        <select id="forum" onchange="toggleForumUI()">
-            <option value="">-- Select Forum --</option>
-            <option value="DISCIPLINARY HEARING">Disciplinary Hearing</option>
-            <option value="COMMISSION FOR CONCILIATION, MEDIATION & ARBITRATION">CCMA</option>
-            <option value="LABOUR COURT OF SOUTH AFRICA">Labour Court</option>
-            <option value="OTHER">Other</option>
-        </select>
-        <input type="text" id="otherForum" class="hidden" placeholder="Enter custom forum name..." style="margin-top:10px">
+<div class="section">
+<label>Forum</label>
+<select id="forum">
+<option>DISCIPLINARY HEARING</option>
+<option>CCMA</option>
+<option>LABOUR COURT</option>
+</select>
 
-        <div style="display: flex; gap: 20px;">
-            <div style="flex:1">
-                <label>Place</label>
-                <input type="text" id="place" placeholder="e.g. Johannesburg" oninput="handlePrefixLogic()">
-            </div>
-            <div style="flex:1" id="caseNumContainer">
-                <label>Case Number</label>
-                <input type="text" id="caseNumber" placeholder="Prefix automatically generated...">
-            </div>
-        </div>
-    </div>
+<label>Place</label>
+<input type="text" id="place" placeholder="e.g. Johannesburg">
 
-    <div class="section" id="partyControls">
-        <div id="disciplinaryFields" class="hidden">
-            <label>Name of Employer</label><input type="text" id="employer">
-            <label>Name of Employee</label><input type="text" id="employee">
-        </div>
+<label>Case Number</label>
+<input type="text" id="caseNumber">
+</div>
 
-        <div id="legalFields" class="hidden">
-            <div style="display: flex; gap: 20px;">
-                <div style="flex:1">
-                    <label>Number of Applicants</label>
-                    <input type="number" id="countApp" value="1" min="1" oninput="renderInputs('App')">
-                </div>
-                <div style="flex:1">
-                    <label>Number of Respondents</label>
-                    <input type="number" id="countRes" value="1" min="1" oninput="renderInputs('Res')">
-                </div>
-            </div>
-            <div id="appList" class="dynamic-list"></div>
-            <div id="resList" class="dynamic-list"></div>
-            
-            <label>Legal Entity for Applicants</label>
-            <select id="legalEntity" onchange="toggleOtherLegal(this.value)">
-                <option value="None">None</option>
-                <option value="BEMAWU">BEMAWU</option>
-                <option value="Other">Other</option>
-            </select>
-            <input type="text" id="otherLegal" class="hidden" placeholder="Specify Entity Name..." style="margin-top:10px">
-        </div>
-    </div>
+<div class="section">
+<label>Upload Transcript (.txt / .docx)</label>
+<input type="file" id="fileIn" accept=".txt,.docx">
+</div>
 
-    <div class="section">
-        <label id="labelOfficial">Chairperson / Commissioner</label>
-        <input type="text" id="nameOfficial">
-        
-        <label>Initiator / Applicant Representative</label>
-        <input type="text" id="nameRep1">
-
-        <label>Respondent Representative</label>
-        <input type="text" id="nameRep2">
-
-        <label>Number of Witnesses</label>
-        <input type="number" id="countWit" value="1" min="0" oninput="renderInputs('Wit')">
-        <div id="witList" class="dynamic-list"></div>
-
-        <label>Date of Hearing</label>
-        <input type="date" id="hearingDate">
-    </div>
-
-    <div class="section">
-        <label>Upload Transcript (txt/docx)</label>
-        <input type="file" id="fileIn" accept=".txt,.docx">
-        
-        <label>Formatting</label>
-        <select id="formatType">
-            <option value="tab">Tab Formatted (Longest Name Alignment)</option>
-            <option value="justify">Justified (Tab after Name)</option>
-        </select>
-    </div>
-
-    <div class="btn-group">
-        <button type="button" class="save-btn" onclick="processAndSave()">Generate & Save Document</button>
-    </div>
+<div style="text-align:center">
+<button type="button" class="save-btn" onclick="processAndSave()">Generate & Save</button>
+</div>
 </div>
 
 <script>
-    const storageKey = 'prefix_db';
-    let prefixes = JSON.parse(localStorage.getItem(storageKey)) || { "johannesburg": "GAJB" };
-
-    function toggleForumUI() {
-        const forum = document.getElementById('forum').value;
-        const disc = document.getElementById('disciplinaryFields');
-        const legal = document.getElementById('legalFields');
-        const caseCont = document.getElementById('caseNumContainer');
-        const labelOff = document.getElementById('labelOfficial');
-        const otherForum = document.getElementById('otherForum');
-
-        disc.classList.add('hidden');
-        legal.classList.add('hidden');
-        caseCont.classList.remove('hidden');
-        otherForum.classList.add('hidden');
-
-        if(forum === "DISCIPLINARY HEARING") {
-            disc.classList.remove('hidden');
-            caseCont.classList.add('hidden');
-            labelOff.innerText = "Name of Chairperson";
-        } else if (forum === "OTHER") {
-            otherForum.classList.remove('hidden');
-            legal.classList.remove('hidden');
-            labelOff.innerText = "Name of Commissioner";
-            renderInputs('App');
-            renderInputs('Res');
-        } else if (forum !== "") {
-            legal.classList.remove('hidden');
-            labelOff.innerText = "Name of Commissioner";
-            renderInputs('App');
-            renderInputs('Res');
+async function processAndSave() {
+    try {
+        const fileInput = document.getElementById('fileIn');
+        if (!fileInput.files.length) {
+            alert("Upload a file.");
+            return;
         }
-        renderInputs('Wit');
-    }
 
-    function renderInputs(type) {
-        const count = document.getElementById('count' + type) ? document.getElementById('count' + type).value : 0;
-        const container = document.getElementById(type.toLowerCase() + 'List');
-        if(!container) return;
-        
-        container.innerHTML = `<strong>${type} Names:</strong>`;
-        for(let i=1; i<=count; i++) {
-            container.innerHTML += `<div class="dynamic-item"><input type="text" class="${type}-input" placeholder="${type} ${i} Name"></div>`;
+        const file = fileInput.files[0];
+        let rawText = "";
+
+        if (file.name.endsWith('.docx')) {
+            const buffer = await file.arrayBuffer();
+            const res = await mammoth.extractRawText({arrayBuffer: buffer});
+            rawText = res.value;
+        } else {
+            rawText = await file.text();
         }
+
+        const lines = rawText.split('\n').filter(l => l.trim() !== "");
+        await createWordDocument(lines, file.name);
+
+    } catch (e) {
+        alert("ERROR: " + e.message);
+        console.error(e);
     }
+}
 
-    function handlePrefixLogic() {
-        const place = document.getElementById('place').value.toLowerCase().trim();
-        const caseInp = document.getElementById('caseNumber');
-        if (prefixes[place]) caseInp.value = prefixes[place] + "/";
-    }
+async function createWordDocument(lines, originalName) {
+    const { Document, Packer, Paragraph, TextRun, AlignmentType, TabStopType, PageNumber } = docx;
 
-    function toggleOtherLegal(val) {
-        document.getElementById('otherLegal').className = (val === 'Other') ? '' : 'hidden';
-    }
+    const children = [];
 
-    async function processAndSave() {
-        try {
-            const fileInput = document.getElementById('fileIn');
-            if (!fileInput.files || fileInput.files.length === 0) {
-                alert("Please upload a file first.");
-                return;
-            }
+    // HEADER
+    children.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun("LEGAL TRANSCRIPT")]
+    }));
 
-            const file = fileInput.files[0];
-            
-            // Save prefix logic
-            const place = document.getElementById('place').value.toLowerCase().trim();
-            const caseVal = document.getElementById('caseNumber').value;
-            if(place && caseVal.includes('/')) {
-                prefixes[place] = caseVal.split('/')[0];
-                localStorage.setItem(storageKey, JSON.stringify(prefixes));
-            }
+    children.push(new Paragraph(" "));
 
-            // Read the file text
-            let rawText = "";
-            if (file.name.endsWith('.docx')) {
-                const buffer = await file.arrayBuffer();
-                const res = await mammoth.extractRawText({arrayBuffer: buffer});
-                rawText = res.value;
-            } else {
-                rawText = await file.text();
-            }
+    // TRANSCRIPT WITH REAL ALIGNMENT
+    lines.forEach((text, i) => {
 
-            if (!rawText) {
-                throw new Error("The file is empty or could not be read.");
-            }
+        const match = text.match(/^\s*\[?([^\]:]+)\]?\s*:\s*(.*)$/);
 
-            // Calculate longest name for formatting
-            const lines = rawText.split('\n').filter(l => l.trim() !== "");
-            let longestNameLength = 0;
-            lines.forEach(l => {
-                const m = l.match(/^\[?(.*?)\]?:/);
-                if (m && m[1].length > longestNameLength) {
-                    longestNameLength = m[1].length;
+        let name = "";
+        let dialogue = text;
+
+        if (match) {
+            name = match[1].toUpperCase();
+            dialogue = match[2];
+        }
+
+        let lineNum = (i % 5 === 0) ? (i + 1).toString().padEnd(4) : "    ";
+
+        children.push(new Paragraph({
+            tabStops: [
+                {
+                    type: TabStopType.LEFT,
+                    position: 4000
                 }
-            });
+            ],
+            spacing: { line: 360 },
+            children: [
+                new TextRun({
+                    text: lineNum + name + ":",
+                    bold: true,
+                    font: "Courier New",
+                    size: 24
+                }),
+                new TextRun({
+                    text: "\t" + dialogue,
+                    font: "Courier New",
+                    size: 24
+                })
+            ]
+        }));
+    });
 
-            // Pass to document generator
-            await createWordDocument(lines, longestNameLength, file.name);
-
-        } catch (error) {
-            alert("SYSTEM ERROR: " + error.message + "\n\nPlease open the Developer Console (F12) to see more details.");
-            console.error("Full Error Details:", error);
-        }
-    }
-
-    async function createWordDocument(lines, longest, originalName) {
-        // Destructure docx to ensure variables exist
-        const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber } = docx;
-        
-        let forumName = document.getElementById('forum').value;
-        if (forumName === 'OTHER') forumName = document.getElementById('otherForum').value;
-        const style = document.getElementById('formatType').value;
-        const padSize = longest + 4;
-
-        // Build the paragraphs array dynamically
-        const childrenNodes = [];
-
-        // Header
-        childrenNodes.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }));
-        childrenNodes.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }));
-        childrenNodes.push(new Paragraph({ alignment: AlignmentType.LEFT, border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "HELD AT " + document.getElementById('place').value.toUpperCase(), bold: true })] }));
-        childrenNodes.push(new Paragraph({ spacing: { before: 240 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] }));
-
-        // Map transcript dialogue
-        lines.forEach((text, i) => {
-            const match = text.match(/^(\[?.*?\]?):(.*)/);
-            let formattedLine = text;
-            
-            if(match) {
-                const name = match[1].toUpperCase();
-                const dialogue = match[2].trim();
-                if (style === 'tab') {
-                    formattedLine = name.padEnd(padSize) + ": " + dialogue;
-                } else {
-                    formattedLine = name + ": \t" + dialogue;
-                }
+    const doc = new Document({
+        sections: [{
+            children: children,
+            footers: {
+                default: new docx.Footer({
+                    children: [
+                        new Paragraph({
+                            alignment: AlignmentType.RIGHT,
+                            children: [
+                                new TextRun("Page "),
+                                new TextRun({ children: [PageNumber.CURRENT] })
+                            ]
+                        })
+                    ]
+                })
             }
+        }]
+    });
 
-            // Prepend line numbers every 5th line
-            let lineNumString = "    "; 
-            if (i % 5 === 0) {
-                lineNumString = (i + 1).toString().padEnd(4);
-            }
+    let safeName = originalName.split('.')[0] + ".docx";
 
-            childrenNodes.push(new Paragraph({
-                spacing: { line: 480 },
-                children: [new TextRun({ text: lineNumString + formattedLine, font: "Courier New", size: 24 })]
-            }));
-        });
-
-        // Transcriber Certificate
-        childrenNodes.push(new Paragraph({ spacing: { before: 500 }, border: { top: { style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "TRANSCRIBER'S CERTIFICATE", bold: true })] }));
-        childrenNodes.push(new Paragraph({ children: [new TextRun("I hereby certify that the above is a true and correct record of the proceedings.") ] }));
-        childrenNodes.push(new Paragraph({ spacing: { before: 400 }, children: [new TextRun("SIGNED AT " + document.getElementById('place').value.toUpperCase() + " ON THIS ____ DAY OF ___________ 2026") ] }));
-
-        // Create the Document
-        const doc = new Document({
-            sections: [{
-                properties: { page: { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } },
-                footers: {
-                    default: new docx.Footer({
-                        children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun("Page "), new TextRun({ children: [PageNumber.CURRENT] })] })]
-                    })
-                },
-                children: childrenNodes
-            }]
-        });
-
-        // Force native download (No external libraries)
+    try {
         const blob = await Packer.toBlob(doc);
-        const url = window.URL.createObjectURL(blob);
+
+        if (window.navigator && window.navigator.msSaveOrOpenBlob) {
+            window.navigator.msSaveOrOpenBlob(blob, safeName);
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+
+            a.href = url;
+            a.download = safeName;
+
+            document.body.appendChild(a);
+            a.click();
+
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }, 100);
+        }
+
+    } catch (err) {
+        console.error("DOCX failed:", err);
+
+        // FALLBACK TXT DOWNLOAD
+        const fallbackBlob = new Blob([lines.join("\n")], { type: "text/plain" });
+        const url = URL.createObjectURL(fallbackBlob);
+
         const a = document.createElement("a");
-        a.style.display = "none";
         a.href = url;
-        
-        let safeName = originalName.split('.')[0] + "_" + style + ".docx";
-        a.download = safeName;
-        
+        a.download = safeName.replace(".docx", ".txt");
+
         document.body.appendChild(a);
         a.click();
-        
-        // Cleanup
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }, 100);
+
+        alert("DOCX failed — downloaded TXT instead.");
     }
+}
 </script>
 
 </body>
