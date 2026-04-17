@@ -262,16 +262,26 @@
         docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }));
         docChildren.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `HELD AT ${meta.place.toUpperCase()}`, bold: true, size: 24 })] }));
         
-        // Solid Separator Line under HELD AT
         docChildren.push(new Paragraph({
             border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } },
             spacing: { after: 240 },
             children: [new TextRun({ text: "" })]
         }));
 
-        docChildren.push(new Paragraph({ spacing: { before: 240, after: 240 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true, size: 24 })] }));
+        // "In the matter between:" (Sentence case, no bold, underlined)
+        docChildren.push(new Paragraph({ 
+            spacing: { before: 240, after: 120 }, 
+            children: [new TextRun({ text: "In the matter between:", size: 24, underline: { type: "single" } })] 
+        }));
 
-        // 2. Parties Table
+        // Solid Separator Line under "In the matter between:"
+        docChildren.push(new Paragraph({
+            border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } },
+            spacing: { after: 240 },
+            children: [new TextRun({ text: "" })]
+        }));
+
+        // 2. Parties Table (Sentence Case for roles)
         function createPartyRow(leftText, rightText) {
             return new TableRow({
                 children: [
@@ -283,7 +293,6 @@
 
         let partyRows = [];
         
-        // Helper to add the "AND" with double line spacing above and below
         function addAndRow() {
             partyRows.push(new TableRow({
                 children: [
@@ -297,45 +306,56 @@
         }
 
         if (meta.isDisciplinary) {
-            if(meta.empName) partyRows.push(createPartyRow(meta.empName, "EMPLOYER"));
+            if(meta.empName) partyRows.push(createPartyRow(meta.empName, "Employer"));
             if(meta.empName && meta.employeeName) addAndRow();
-            if(meta.employeeName) partyRows.push(createPartyRow(meta.employeeName, "EMPLOYEE"));
+            if(meta.employeeName) partyRows.push(createPartyRow(meta.employeeName, "Employee"));
         } else {
             let hasApps = false;
-            meta.apps.forEach((app, i) => { if(app) { partyRows.push(createPartyRow(app, `${getOrdinal(i+1)} APPLICANT`)); hasApps = true; } });
+            meta.apps.forEach((app, i) => { if(app) { partyRows.push(createPartyRow(app, `${getOrdinal(i+1)} Applicant`)); hasApps = true; } });
             
             let hasRes = meta.ress.some(r => r);
             if (hasApps && hasRes) addAndRow();
 
-            meta.ress.forEach((res, i) => { if(res) { partyRows.push(createPartyRow(res, `${getOrdinal(i+1)} RESPONDENT`)); } });
+            meta.ress.forEach((res, i) => { if(res) { partyRows.push(createPartyRow(res, `${getOrdinal(i+1)} Respondent`)); } });
         }
 
         if(partyRows.length > 0) {
             docChildren.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: noBorders, rows: partyRows }));
         }
 
-        // 3. Representatives & Officials
-        docChildren.push(new Paragraph({ spacing: { before: 240 }, children: [] }));
-        if (meta.isDisciplinary) {
-            if (meta.initiatorName) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Initiator: ${meta.initiatorName}`, size: 24 })] }));
-            if (meta.empRepName) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Employee Representative: ${meta.empRepName}`, size: 24 })] }));
-            if (meta.officialName) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Chairperson: ${meta.officialName}`, size: 24 })] }));
-        } else {
-            if (meta.appRep) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Appearance for Applicant: ${meta.appRep}`, size: 24 })] }));
-            if (meta.resRep) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Appearance for Respondent: ${meta.resRep}`, size: 24 })] }));
-            if (meta.officialName) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Commissioner: ${meta.officialName}`, size: 24 })] }));
+        // 3. Representatives & Officials (Courier New, Underlined Label, Separation from parties)
+        docChildren.push(new Paragraph({ spacing: { before: 480 }, children: [] })); // Extra separation gap
+        
+        function createRolePara(roleLabel, personName) {
+            return new Paragraph({
+                spacing: { after: 120 },
+                children: [
+                    new TextRun({ text: roleLabel + ": ", font: "Courier New", size: 24, underline: { type: "single" } }),
+                    new TextRun({ text: personName, font: "Courier New", size: 24 })
+                ]
+            });
         }
-        if (meta.hearingDate) docChildren.push(new Paragraph({ children: [new TextRun({ text: `Date of Hearing: ${meta.hearingDate}`, size: 24 })] }));
+
+        if (meta.isDisciplinary) {
+            if (meta.initiatorName) docChildren.push(createRolePara("Initiator", meta.initiatorName));
+            if (meta.empRepName) docChildren.push(createRolePara("Employee Representative", meta.empRepName));
+            if (meta.officialName) docChildren.push(createRolePara("Chairperson", meta.officialName));
+        } else {
+            if (meta.appRep) docChildren.push(createRolePara("Appearance for Applicant", meta.appRep));
+            if (meta.resRep) docChildren.push(createRolePara("Appearance for Respondent", meta.resRep));
+            if (meta.officialName) docChildren.push(createRolePara("Commissioner", meta.officialName));
+        }
+        if (meta.hearingDate) docChildren.push(createRolePara("Date of Hearing", meta.hearingDate));
 
         // 4. Solid Separator Line before transcript
         docChildren.push(new Paragraph({
             border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } },
-            spacing: { after: 400 },
+            spacing: { before: 240, after: 400 },
             children: [new TextRun({ text: "" })]
         }));
 
         // 5. UNTOUCHED: Transcript Generation
-        const tableRows = blocks.map((block, i) => {
+        const tableRowsTranscript = blocks.map((block, i) => {
             let lineNumString = (i % 5 === 0) ? (i + 1).toString() : "";
             let speakerName = block.speaker ? block.speaker.toUpperCase() : "";
 
@@ -363,7 +383,7 @@
             });
         });
 
-        docChildren.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: tableRows }));
+        docChildren.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: tableRowsTranscript }));
 
         // 6. Transcriber's Certificate
         docChildren.push(new Paragraph({ spacing: { before: 500 }, border: { top: { style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "TRANSCRIBER'S CERTIFICATE", bold: true })] }));
@@ -412,25 +432,35 @@
         pdf.setFontSize(12);
         pdf.text(`HELD AT ${meta.place.toUpperCase()}`, 105, y, { align: 'center' }); y += 5;
         
-        // Solid Separator Line under HELD AT
         pdf.line(20, y, 190, y); y += 10;
         
-        pdf.text("IN THE MATTER BETWEEN:", 20, y); y += 10;
+        // "In the matter between:" (Sentence case, normal font, underlined)
+        pdf.setFont("helvetica", "normal");
+        let matterText = "In the matter between:";
+        pdf.text(matterText, 20, y);
+        let matterWidth = pdf.getTextWidth(matterText);
+        pdf.line(20, y + 1, 20 + matterWidth, y + 1); // Underline it
+        y += 5;
+        
+        // Solid line below "In the matter between:"
+        pdf.line(20, y, 190, y); 
+        y += 10;
 
-        // 2. Parties
+        // 2. Parties (Sentence Case for roles)
+        pdf.setFont("helvetica", "bold");
         if (meta.isDisciplinary) {
-            if(meta.empName) { pdf.text(meta.empName, 20, y); pdf.text("EMPLOYER", 190, y, { align: 'right' }); y += 7; }
+            if(meta.empName) { pdf.text(meta.empName, 20, y); pdf.text("Employer", 190, y, { align: 'right' }); y += 7; }
             
             if(meta.empName && meta.employeeName) {
-                y += 7; // Adds ~2 lines
+                y += 7; 
                 pdf.text("AND", 20, y);
-                y += 14; // Adds ~2 lines
+                y += 14; 
             }
             
-            if(meta.employeeName) { pdf.text(meta.employeeName, 20, y); pdf.text("EMPLOYEE", 190, y, { align: 'right' }); y += 7; }
+            if(meta.employeeName) { pdf.text(meta.employeeName, 20, y); pdf.text("Employee", 190, y, { align: 'right' }); y += 7; }
         } else {
             let hasApps = false;
-            meta.apps.forEach((app, i) => { if(app) { pdf.text(app, 20, y); pdf.text(`${getOrdinal(i+1)} APPLICANT`, 190, y, { align: 'right' }); y += 7; hasApps = true; } });
+            meta.apps.forEach((app, i) => { if(app) { pdf.text(app, 20, y); pdf.text(`${getOrdinal(i+1)} Applicant`, 190, y, { align: 'right' }); y += 7; hasApps = true; } });
             
             let hasRes = meta.ress.some(r => r);
             if (hasApps && hasRes) {
@@ -439,23 +469,33 @@
                 y += 14;
             }
 
-            meta.ress.forEach((res, i) => { if(res) { pdf.text(res, 20, y); pdf.text(`${getOrdinal(i+1)} RESPONDENT`, 190, y, { align: 'right' }); y += 7; } });
+            meta.ress.forEach((res, i) => { if(res) { pdf.text(res, 20, y); pdf.text(`${getOrdinal(i+1)} Respondent`, 190, y, { align: 'right' }); y += 7; } });
         }
 
-        y += 5;
+        y += 15; // Extra separation before roles
 
-        // 3. Representatives & Officials
-        pdf.setFont("helvetica", "normal");
+        // 3. Representatives & Officials (Courier font, underlined labels)
+        pdf.setFont("courier", "normal");
+        
+        function printPdfRole(roleLabel, personName) {
+            let labelText = roleLabel + ": ";
+            pdf.text(labelText, 20, y);
+            let labelWidth = pdf.getTextWidth(labelText);
+            pdf.line(20, y + 1, 20 + labelWidth - pdf.getTextWidth(" "), y + 1); // Underline label
+            pdf.text(personName, 20 + labelWidth, y);
+            y += 7;
+        }
+
         if (meta.isDisciplinary) {
-            if (meta.initiatorName) { pdf.text(`Initiator: ${meta.initiatorName}`, 20, y); y += 7; }
-            if (meta.empRepName) { pdf.text(`Employee Representative: ${meta.empRepName}`, 20, y); y += 7; }
-            if (meta.officialName) { pdf.text(`Chairperson: ${meta.officialName}`, 20, y); y += 7; }
+            if (meta.initiatorName) printPdfRole("Initiator", meta.initiatorName);
+            if (meta.empRepName) printPdfRole("Employee Representative", meta.empRepName);
+            if (meta.officialName) printPdfRole("Chairperson", meta.officialName);
         } else {
-            if (meta.appRep) { pdf.text(`Appearance for Applicant: ${meta.appRep}`, 20, y); y += 7; }
-            if (meta.resRep) { pdf.text(`Appearance for Respondent: ${meta.resRep}`, 20, y); y += 7; }
-            if (meta.officialName) { pdf.text(`Commissioner: ${meta.officialName}`, 20, y); y += 7; }
+            if (meta.appRep) printPdfRole("Appearance for Applicant", meta.appRep);
+            if (meta.resRep) printPdfRole("Appearance for Respondent", meta.resRep);
+            if (meta.officialName) printPdfRole("Commissioner", meta.officialName);
         }
-        if (meta.hearingDate) { pdf.text(`Date of Hearing: ${meta.hearingDate}`, 20, y); y += 7; }
+        if (meta.hearingDate) printPdfRole("Date of Hearing", meta.hearingDate);
 
         y += 5;
 
