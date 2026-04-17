@@ -2,209 +2,202 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Legal Transcript Formatter</title>
+    <title>Legal Transcript Formatter Pro</title>
     <script src="https://unpkg.com/docx@8.2.2/build/index.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
 
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 20px; line-height: 1.4; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #1a2a6c; border-bottom: 2px solid #1a2a6c; padding-bottom: 10px; }
-        .section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background: #fafafa; }
-        label { display: block; font-weight: bold; margin-top: 10px; font-size: 0.9em; }
-        input, select, textarea { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        :root { --legal-blue: #1a2a6c; --border: #ccd1d9; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f4f7f9; padding: 20px; color: #333; }
+        .wrapper { max-width: 900px; margin: auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        h2 { border-bottom: 2px solid var(--legal-blue); padding-bottom: 10px; color: var(--legal-blue); }
+        .section { margin-bottom: 30px; padding: 20px; border: 1px solid var(--border); border-radius: 8px; }
+        label { display: block; font-weight: 700; margin: 15px 0 5px; text-transform: uppercase; font-size: 0.75rem; color: #555; }
+        input, select { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
         .hidden { display: none; }
-        .btn-container { text-align: center; margin-top: 30px; }
-        .btn { background: #1a2a6c; color: white; padding: 15px 40px; border: none; border-radius: 5px; cursor: pointer; font-size: 1.1em; transition: 0.3s; }
-        .btn:hover { background: #b21f1f; }
-        .party-entry { border-left: 4px solid #1a2a6c; padding-left: 15px; margin-bottom: 10px; }
-        .row { display: flex; gap: 20px; }
-        .col { flex: 1; }
+        .dynamic-list { margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 6px; }
+        .dynamic-item { margin-bottom: 8px; }
+        .btn-group { text-align: center; margin-top: 40px; }
+        .save-btn { background: var(--legal-blue); color: white; padding: 18px 45px; border: none; border-radius: 8px; cursor: pointer; font-size: 1.1rem; font-weight: bold; transition: 0.2s; }
+        .save-btn:hover { background: #0d1a4d; transform: translateY(-2px); }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>Legal Transcript Formatter</h1>
+<div class="wrapper">
+    <h2>Legal Transcript Formatter</h2>
 
     <div class="section">
         <label>Forum</label>
-        <select id="forum" onchange="updateForumUI()">
+        <select id="forum" onchange="toggleForumUI()">
             <option value="">-- Select Forum --</option>
             <option value="DISCIPLINARY HEARING">Disciplinary Hearing</option>
             <option value="COMMISSION FOR CONCILIATION, MEDIATION & ARBITRATION">CCMA</option>
             <option value="LABOUR COURT OF SOUTH AFRICA">Labour Court</option>
             <option value="OTHER">Other</option>
         </select>
-        <input type="text" id="otherForum" class="hidden" placeholder="Enter custom forum name...">
-    </div>
+        <input type="text" id="otherForum" class="hidden" placeholder="Enter custom forum name..." style="margin-top:10px">
 
-    <div class="section">
-        <div class="row">
-            <div class="col">
+        <div style="display: flex; gap: 20px;">
+            <div style="flex:1">
                 <label>Place</label>
-                <input type="text" id="place" placeholder="e.g. Johannesburg" oninput="autoPrefix()">
+                <input type="text" id="place" placeholder="e.g. Johannesburg" oninput="handlePrefixLogic()">
             </div>
-            <div class="col" id="caseNumBox">
+            <div style="flex:1" id="caseNumContainer">
                 <label>Case Number</label>
-                <input type="text" id="caseNumber" placeholder="Prefix will appear automatically...">
+                <input type="text" id="caseNumber" placeholder="Prefix automatically generated...">
             </div>
         </div>
     </div>
 
-    <div id="partiesContainer" class="section">
+    <div class="section" id="partyControls">
+        <div id="disciplinaryFields" class="hidden">
+            <label>Name of Employer</label><input type="text" id="employer">
+            <label>Name of Employee</label><input type="text" id="employee">
         </div>
 
-    <div class="section">
-        <div class="row">
-            <div class="col">
-                <label id="officialLabel">Chairperson / Commissioner</label>
-                <input type="text" id="officialName">
+        <div id="legalFields" class="hidden">
+            <div style="display: flex; gap: 20px;">
+                <div style="flex:1">
+                    <label>Number of Applicants</label>
+                    <input type="number" id="countApp" value="1" min="1" oninput="renderInputs('App')">
+                </div>
+                <div style="flex:1">
+                    <label>Number of Respondents</label>
+                    <input type="number" id="countRes" value="1" min="1" oninput="renderInputs('Res')">
+                </div>
             </div>
-            <div class="col">
-                <label>Initiator (If applicable)</label>
-                <input type="text" id="initiatorName">
-            </div>
-        </div>
-        <div class="row">
-            <div class="col">
-                <label>Hearing Date</label>
-                <input type="date" id="hearingDate">
-            </div>
-            <div class="col">
-                <label>Witnesses (comma separated)</label>
-                <input type="text" id="witnessList" placeholder="Name 1, Name 2...">
-            </div>
+            <div id="appList" class="dynamic-list"></div>
+            <div id="resList" class="dynamic-list"></div>
+            
+            <label>Legal Entity for Applicants</label>
+            <select id="legalEntity" onchange="toggleOtherLegal(this.value)">
+                <option value="None">None</option>
+                <option value="BEMAWU">BEMAWU</option>
+                <option value="Other">Other</option>
+            </select>
+            <input type="text" id="otherLegal" class="hidden" placeholder="Specify Entity Name..." style="margin-top:10px">
         </div>
     </div>
 
     <div class="section">
-        <label>Upload Transcript (TurboScribe TXT or Word)</label>
-        <input type="file" id="fileInput" accept=".txt,.docx">
+        <label id="labelOfficial">Chairperson</label>
+        <input type="text" id="nameOfficial">
         
-        <label>Formatting Preference</label>
-        <select id="formatStyle">
-            <option value="tab">Tab Formatted (Dialogue starts 2 spaces from longest name)</option>
-            <option value="justify">Justified (Dialogue start 1 tab from speaker)</option>
+        <label>Initiator / Applicant Representative</label>
+        <input type="text" id="nameRep1">
+
+        <label>Respondent Representative</label>
+        <input type="text" id="nameRep2">
+
+        <label>Number of Witnesses</label>
+        <input type="number" id="countWit" value="1" min="0" oninput="renderInputs('Wit')">
+        <div id="witList" class="dynamic-list"></div>
+
+        <label>Date of Hearing</label>
+        <input type="date" id="hearingDate">
+    </div>
+
+    <div class="section">
+        <label>Upload Transcript (txt/docx)</label>
+        <input type="file" id="fileIn" accept=".txt,.docx">
+        
+        <label>Formatting</label>
+        <select id="formatType">
+            <option value="tab">Tab Formatted (Longest Name Alignment)</option>
+            <option value="justify">Justified (Tab after Name)</option>
         </select>
     </div>
 
-    <div class="btn-container">
-        <button class="btn" onclick="processTranscript()">Generate Documents (.docx & .pdf)</button>
+    <div class="btn-group">
+        <button class="save-btn" onclick="generateOutput()">Generate & Save Documents</button>
     </div>
 </div>
 
 <script>
-    // Local Storage for Case Prefixes
-    let prefixMap = JSON.parse(localStorage.getItem('legalPrefixes')) || { "johannesburg": "GAJB" };
+    const storageKey = 'prefix_db';
+    let prefixes = JSON.parse(localStorage.getItem(storageKey)) || { "johannesburg": "GAJB" };
 
-    function autoPrefix() {
+    function toggleForumUI() {
+        const forum = document.getElementById('forum').value;
+        const disc = document.getElementById('disciplinaryFields');
+        const legal = document.getElementById('legalFields');
+        const caseCont = document.getElementById('caseNumContainer');
+        const labelOff = document.getElementById('labelOfficial');
+
+        disc.classList.add('hidden');
+        legal.classList.add('hidden');
+        caseCont.classList.remove('hidden');
+
+        if(forum === "DISCIPLINARY HEARING") {
+            disc.classList.remove('hidden');
+            caseCont.classList.add('hidden');
+            labelOff.innerText = "Name of Chairperson";
+        } else if (forum !== "") {
+            legal.classList.remove('hidden');
+            labelOff.innerText = "Name of Commissioner";
+            renderInputs('App');
+            renderInputs('Res');
+        }
+        renderInputs('Wit');
+    }
+
+    function renderInputs(type) {
+        const count = document.getElementById('count' + type).value;
+        const container = document.getElementById(type.toLowerCase() + 'List');
+        container.innerHTML = `<strong>${type} Names:</strong>`;
+        for(let i=1; i<=count; i++) {
+            container.innerHTML += `<div class="dynamic-item"><input type="text" class="${type}-input" placeholder="${type} ${i} Name"></div>`;
+        }
+    }
+
+    function handlePrefixLogic() {
         const place = document.getElementById('place').value.toLowerCase().trim();
         const caseInp = document.getElementById('caseNumber');
-        const forum = document.getElementById('forum').value;
-        
-        if (forum === "DISCIPLINARY HEARING") {
-            caseInp.value = "";
-            return;
-        }
-
-        if (prefixMap[place]) {
-            caseInp.value = prefixMap[place] + "/";
-        }
+        if (prefixes[place]) caseInp.value = prefixes[place] + "/";
     }
 
-    function updateForumUI() {
-        const forum = document.getElementById('forum').value;
-        const otherInp = document.getElementById('otherForum');
-        const partiesDiv = document.getElementById('partiesContainer');
-        const caseBox = document.getElementById('caseNumBox');
-        
-        otherInp.className = (forum === 'OTHER') ? '' : 'hidden';
-        caseBox.className = (forum === 'DISCIPLINARY HEARING') ? 'col hidden' : 'col';
-
-        partiesDiv.innerHTML = '';
-        if (forum === "DISCIPLINARY HEARING") {
-            partiesDiv.innerHTML = `
-                <label>Name of Employer</label><input type="text" id="employer">
-                <label>Name of Employee</label><input type="text" id="employee">
-                <label>Employee Representative</label><input type="text" id="repEmp">
-            `;
-        } else if (forum !== "") {
-            partiesDiv.innerHTML = `
-                <label>How many Applicants?</label>
-                <input type="number" id="numApp" value="1" onchange="genPartyInputs()">
-                <div id="appInputs"></div>
-                <label>How many Respondents?</label>
-                <input type="number" id="numRes" value="1" onchange="genPartyInputs()">
-                <div id="resInputs"></div>
-                <label>Legal Entity acting for Applicants?</label>
-                <select id="legalEntity" onchange="toggleLegalOther(this.value)">
-                    <option value="None">None</option>
-                    <option value="BEMAWU">BEMAWU</option>
-                    <option value="Other">Other</option>
-                </select>
-                <input type="text" id="otherLegal" class="hidden" placeholder="Name of Entity...">
-            `;
-            genPartyInputs();
-        }
-    }
-
-    function genPartyInputs() {
-        const nApp = document.getElementById('numApp').value;
-        const nRes = document.getElementById('numRes').value;
-        const appDiv = document.getElementById('appInputs');
-        const resDiv = document.getElementById('resInputs');
-        
-        appDiv.innerHTML = ''; resDiv.innerHTML = '';
-        for(let i=1; i<=nApp; i++) appDiv.innerHTML += `<input type="text" class="app-names" placeholder="Name of Applicant ${i}">`;
-        for(let i=1; i<=nRes; i++) resDiv.innerHTML += `<input type="text" class="res-names" placeholder="Name of Respondent ${i}">`;
-    }
-
-    function toggleLegalOther(val) {
+    function toggleOtherLegal(val) {
         document.getElementById('otherLegal').className = (val === 'Other') ? '' : 'hidden';
     }
 
-    async function processTranscript() {
-        const file = document.getElementById('fileInput').files[0];
-        if (!file) return alert("Please upload a file.");
+    async function generateOutput() {
+        const file = document.getElementById('fileIn').files[0];
+        if (!file) return alert("Please upload a file first.");
 
-        // Read Content
+        // Prefix persistence logic
+        const place = document.getElementById('place').value.toLowerCase().trim();
+        const caseVal = document.getElementById('caseNumber').value;
+        if(place && caseVal.includes('/')) {
+            prefixes[place] = caseVal.split('/')[0];
+            localStorage.setItem(storageKey, JSON.stringify(prefixes));
+        }
+
         let rawText = "";
         if (file.name.endsWith('.docx')) {
             const buffer = await file.arrayBuffer();
-            const result = await mammoth.extractRawText({arrayBuffer: buffer});
-            rawText = result.value;
+            const res = await mammoth.extractRawText({arrayBuffer: buffer});
+            rawText = res.value;
         } else {
             rawText = await file.text();
         }
 
-        // Logic for Longest Name Alignment
-        const lines = rawText.split('\n');
-        let longest = 0;
+        const lines = rawText.split('\n').filter(l => l.trim() !== "");
+        let longestName = 0;
         lines.forEach(l => {
-            let match = l.match(/^\[?(.*?)\]?:/);
-            if (match && match[1].length > longest) longest = match[1].length;
+            const m = l.match(/^\[?(.*?)\]?:/);
+            if (m && m[1].length > longestName) longestName = m[1].length;
         });
 
-        // Store Case Number Logic
-        const place = document.getElementById('place').value.trim();
-        const caseNum = document.getElementById('caseNumber').value.trim();
-        if (caseNum.includes('/') && place) {
-            prefixMap[place.toLowerCase()] = caseNum.split('/')[0];
-            localStorage.setItem('legalPrefixes', JSON.stringify(prefixMap));
-        }
-
-        // Generate DOCX using docx.js library
-        generateDocx(lines, longest);
+        saveWordFile(lines, longestName, file.name);
     }
 
-    function generateDocx(lines, longest) {
-        const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber, NumberFormat } = docx;
-        const forum = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
-        const style = document.getElementById('formatStyle').value;
+    function saveWordFile(lines, longest, originalName) {
+        const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, PageNumber } = docx;
+        const forumName = document.getElementById('forum').value === 'OTHER' ? document.getElementById('otherForum').value : document.getElementById('forum').value;
+        const style = document.getElementById('formatType').value;
+        const pad = longest + 4;
 
         const doc = new Document({
             sections: [{
@@ -215,48 +208,34 @@
                     })
                 },
                 children: [
-                    // Heading Section
                     new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "IN THE", size: 24 })] }),
-                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forum.toUpperCase(), bold: true, size: 44 })] }),
-                    new Paragraph({ 
-                        border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } }, 
-                        spacing: { after: 200 },
-                        children: [new TextRun({ text: "HELD AT " + document.getElementById('place').value.toUpperCase(), bold: true })] 
-                    }),
-                    
-                    new Paragraph({ children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] }),
-                    
-                    // List of Applicants/Respondents here...
+                    new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: forumName.toUpperCase(), bold: true, size: 44 })] }),
+                    new Paragraph({ alignment: AlignmentType.LEFT, border: { bottom: { color: "auto", style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "HELD AT " + document.getElementById('place').value.toUpperCase(), bold: true })] }),
+                    new Paragraph({ spacing: { before: 240 }, children: [new TextRun({ text: "IN THE MATTER BETWEEN:", bold: true })] }),
                     
                     ...lines.map((text, i) => {
-                        const match = text.match(/^(\[?.*?\]?):(.*)/);
-                        let finalLine = text;
-                        if (match) {
-                            const name = match[1].toUpperCase();
-                            const dialogue = match[2].trim();
-                            if (style === 'tab') {
-                                finalLine = name.padEnd(longest + 4) + ": " + dialogue;
-                            } else {
-                                finalLine = name + ": \t" + dialogue;
-                            }
+                        const m = text.match(/^(\[?.*?\]?):(.*)/);
+                        let output = text;
+                        if(m) {
+                            const name = m[1].toUpperCase();
+                            const dialogue = m[2].trim();
+                            output = (style === 'tab') ? name.padEnd(pad) + ": " + dialogue : name + ": \t" + dialogue;
                         }
                         return new Paragraph({
-                            spacing: { line: 480 }, // Double space
-                            children: [new TextRun({ text: (i%5==0? (i+1)+" ":"") + finalLine, font: "Courier New", size: 24 })]
+                            spacing: { line: 480 },
+                            children: [new TextRun({ text: (i%5==0 ? (i+1).toString().padEnd(4) : "    ") + output, font: "Courier New", size: 24 })]
                         });
                     }),
                     
-                    // Transcriber Certificate
-                    new Paragraph({ spacing: { before: 400 }, children: [new TextRun({ text: "TRANSCRIBER'S CERTIFICATE", bold: true, underline: {} })] }),
-                    new Paragraph({ children: [new TextRun("I hereby certify that the above is a true and correct record of the proceedings.") ] }),
-                    new Paragraph({ spacing: { before: 400 }, children: [new TextRun("SIGNATURE: _______________________") ] })
+                    new Paragraph({ spacing: { before: 500 }, border: { top: { style: BorderStyle.SINGLE, size: 6 } }, children: [new TextRun({ text: "TRANSCRIBER'S CERTIFICATE", bold: true })] }),
+                    new Paragraph({ children: [new TextRun("I certify this is a true record.") ] }),
+                    new Paragraph({ spacing: { before: 400 }, children: [new TextRun("SIGNED AT " + document.getElementById('place').value.toUpperCase() + " ON THIS ____ DAY OF ___________ 2026") ] })
                 ]
             }]
         });
 
         Packer.toBlob(doc).then(blob => {
-            const fileName = document.getElementById('fileInput').files[0].name.split('.')[0];
-            saveAs(blob, fileName + "_" + style + ".docx");
+            saveAs(blob, originalName.split('.')[0] + "_" + style + ".docx");
         });
     }
 </script>
